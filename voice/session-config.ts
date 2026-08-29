@@ -10,7 +10,7 @@ Si ya cerraste con un transportista y después otro te ofrece algo mejor dentro 
 llamá a cancel_commitment (explicando el motivo), avisale al primero en la llamada que
 corresponda que ya no sigue en pie, y recién ahí cerrá con record_commitment el nuevo trato.
 Nunca dejes dos reservas vigentes al mismo tiempo para la misma operación.
-Antes de arrancar la ronda de llamadas salientes, usá find_carriers para saber a quién llamar — te da la lista de transportistas que sirven el puerto de esta operación, ordenada por cercanía, con cuánto suelen negociar y su puntualidad. Priorizá negociar más con los que tienen disposicion_a_negociar alta, y tené en cuenta la puntualidad al elegir entre ofertas parecidas — un precio un poco más alto con mejor puntualidad puede ser la mejor opción.`,
+Antes de arrancar la ronda de llamadas salientes, usá find_carriers con limite: 3 para saber a quién llamar — te da los 3 mejores transportistas para el puerto de esta operación (no todos los que hay, pueden ser más de 10), elegidos por un puntaje que combina cercanía, cuánto suelen negociar, su puntualidad y sus tasas de aceptación (tasa_aceptacion_general y tasa_aceptacion_corto_plazo, 0 a 1). Negociá con esos 3, en orden. Priorizá negociar más con los que tienen disposicion_a_negociar alta, tené en cuenta la puntualidad al elegir entre ofertas parecidas, y si la ventana del mandato es ajustada (pocos días de anticipación), priorizá al que tenga tasa_aceptacion_corto_plazo más alta — te ahorra llamadas que probablemente terminen en rechazo.`,
 // TODO (Sofía): esto es un piso mínimo para que la tool se use bien — el resto del
 // prompt de negociación (cómo pedir precio, cómo comparar, tono ante objeciones) es tuyo.
 
@@ -20,13 +20,17 @@ Antes de arrancar la ronda de llamadas salientes, usá find_carriers para saber 
     {
       type: "function",
       name: "find_carriers",
-      description: "Devuelve la lista de transportistas candidatos para el puerto de esta operación, ordenados por cercanía al puerto — así sabés a quién llamar primero. Incluye disposicion_a_negociar y puntualidad (1-5) de cada uno para priorizar con quién negociar de más. Llamala al arrancar, antes de la ronda de llamadas salientes.",
+      description: "Devuelve la lista de transportistas candidatos para el puerto de esta operación. Incluye disposicion_a_negociar y puntualidad (1-5), y tasa_aceptacion_general y tasa_aceptacion_corto_plazo (0-1, esta última es la tasa de aceptación cuando se pide con pocos días de anticipación) de cada uno. Usá limite para no recibir una lista larga de un mismo puerto: con limite, deja de ordenar por cercanía y devuelve los mejores N por un puntaje combinado (distancia + disposición a negociar + puntualidad + las dos tasas de aceptación) — para una negociación en vivo, pedí limite: 3. Llamala al arrancar, antes de la ronda de llamadas salientes.",
       parameters: {
         type: "object",
         properties: {
           max_distancia_km: {
             type: "number",
             description: "Si se pasa, descarta transportistas a más de esta distancia del puerto (en km). Opcional — dejalo afuera si no hace falta filtrar por distancia.",
+          },
+          limite: {
+            type: "number",
+            description: "Cuántos candidatos como máximo querés recibir, elegidos por el mejor puntaje combinado (no solo por cercanía). Usá esto para acotar la ronda de negociación, ej. limite: 3.",
           },
         },
         required: [],

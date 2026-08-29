@@ -54,9 +54,18 @@ def main() -> None:
     print(f"Reset total cuando haga falta rehearsar de nuevo: POST {BASE_URL}/debug/reset")
 
     candidatos = requests.get(f"{BASE_URL}/transportistas", params={"puerto": op["puerto_origen"]}).json()
-    print(f"\nTransportistas candidatos para {op['puerto_origen']} (a quién puede llamar Volta):")
+    print(f"\nTransportistas candidatos para {op['puerto_origen']} (a quién PODRÍA llamar Volta) — {len(candidatos)} en total:")
     for c in candidatos:
-        print(f"  {c['id']:<20} {c['nombre']:<24} {c['distancia_km']:>6} km  negociación={c['disposicion_a_negociar']}  puntualidad={c['puntualidad']}")
+        print(
+            f"  {c['id']:<20} {c['nombre']:<28} {c['distancia_km']:>6} km  "
+            f"negociación={c['disposicion_a_negociar']}  puntualidad={c['puntualidad']}  "
+            f"aceptación_general={c['tasa_aceptacion_general']:.2f}  aceptación_corto_plazo={c['tasa_aceptacion_corto_plazo']:.2f}"
+        )
+
+    top3 = requests.get(f"{BASE_URL}/transportistas", params={"puerto": op["puerto_origen"], "limite": 3}).json()
+    print(f"\nTop 3 por puntaje combinado (a quién llama Volta en la demo, negociación en vivo acotada):")
+    for c in top3:
+        print(f"  {c['id']:<20} {c['nombre']:<28} puntaje={c['puntaje']}  ({c['distancia_km']} km)")
 
 
 if __name__ == "__main__":

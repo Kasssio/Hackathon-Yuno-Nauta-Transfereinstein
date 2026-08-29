@@ -105,9 +105,16 @@ def mandato_de_la_operacion(operacion_id: str) -> Mandato:
 
 @app.get("/transportistas")
 def listar_transportistas(
-    puerto: Optional[str] = None, max_distancia_km: Optional[float] = None
+    puerto: Optional[str] = None,
+    max_distancia_km: Optional[float] = None,
+    limite: Optional[int] = None,
 ) -> List[dict]:
-    return buscar_candidatos(puerto=puerto, max_distancia_km=max_distancia_km)
+    """Sin `limite`: todos los candidatos del puerto, ordenados por
+    cercanía. Con `limite` (ej. `?limite=3`): los mejores N por un
+    puntaje combinado (distancia + disposición a negociar + puntualidad
+    + tasas de aceptación) — para no mandarle a Volta una lista larga
+    de un mismo puerto a negociar."""
+    return buscar_candidatos(puerto=puerto, max_distancia_km=max_distancia_km, limite=limite)
 
 
 # ---------------------------------------------------------------------------

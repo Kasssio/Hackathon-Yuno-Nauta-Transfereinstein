@@ -36,6 +36,7 @@ export async function onToolCall(name, args) {
     const { operacion } = await resolverOperacionActual();
     const params = new URLSearchParams({ puerto: operacion.puerto_origen });
     if (args.max_distancia_km != null) params.set("max_distancia_km", args.max_distancia_km);
+    if (args.limite != null) params.set("limite", args.limite);
     const candidatos = await (await fetch(`${BACKEND_URL}/transportistas?${params}`)).json();
     return { candidatos };
   }

@@ -26,9 +26,11 @@ Las piezas del dominio:
   referente revisa en el dashboard y confirma — eso dispara un
   `POST /commitments` normal, con el guardrail de siempre.
 - **Catálogo de transportistas (`app/carriers_data.py`)** — fixture
-  ficticio (puerto que atienden, ubicación, disposición a negociar 1-5,
-  puntualidad 1-5, tarifa de referencia). Resuelve "a quién llama
-  Volta": el filtro por puerto y distancia es código de verdad, no un
+  ficticio de 30 transportistas (puerto que atienden, ubicación,
+  disposición a negociar 1-5, puntualidad 1-5, tarifa de referencia,
+  y dos tasas de aceptación 0-1: general y a corto plazo — pedidos
+  con pocos días de anticipación). Resuelve "a quién llama Volta": el
+  filtro por puerto y distancia es código de verdad, no un
   transportista hardcodeado en el prompt del agente.
 
 ## Cómo correrlo
@@ -83,7 +85,7 @@ python scripts/simulate_scenarios.py
 | `POST` | `/operaciones` | Crear una operación (embarque) |
 | `GET` | `/operaciones/{id}` | Detalle de una operación |
 | `GET` | `/operaciones/{id}/mandato` | Atajo: el mandato vigente de esa operación, sin tener que guardarse el mandato_id aparte |
-| `GET` | `/transportistas` | Acá pega la tool `find_carriers` — candidatos para negociar, filtrados por puerto (`?puerto=`) y opcionalmente por distancia máxima (`?max_distancia_km=`), ordenados por cercanía. Catálogo ficticio en `app/carriers_data.py` |
+| `GET` | `/transportistas` | Acá pega la tool `find_carriers` — candidatos para negociar, filtrados por puerto (`?puerto=`) y opcionalmente por distancia máxima (`?max_distancia_km=`). Con `?limite=` deja de ordenar por cercanía y devuelve los N mejores por un puntaje combinado (distancia + negociación + puntualidad + tasas de aceptación) — para no mandarle a Volta una lista larga a negociar. Catálogo ficticio de 30 transportistas en `app/carriers_data.py` |
 | `POST` | `/mandatos` | Crear un mandato para una operación |
 | `POST` | `/mandatos/{id}/revocar` | **El botón del trial by fire** — revoca en vivo |
 | `POST` | `/cotizaciones` | Acá pega la tool `request_quote` — registra una oferta de un transportista SIN comprometerse (no corre el guardrail). Para "several negotiations, one best choice" |
@@ -118,7 +120,7 @@ poll (Supabase, WebSocket), se cambia adentro de `storage.py` nada más
 - [x] `/debug/reset` para rehearsar el trial by fire repetidas veces
 - [x] `request_quote`/`/cotizaciones` separado de `record_commitment` — para poder cotizar con varios transportistas sin disparar el guardrail anti-duplicado antes de elegir
 - [x] `cancel_commitment`/`/commitments/{id}/cancelar` — soporta la negociación con reconsideración (cerrar con 1, encontrar algo mejor, cancelar y cerrar con 2, y volver atrás si hace falta), sin romper la defensa anti-duplicado
-- [x] `find_carriers`/`/transportistas` — catálogo ficticio de transportistas con filtro por puerto y distancia, para que "a quién llama Volta" sea una decisión con lógica y no un hardcode
+- [x] `find_carriers`/`/transportistas` — catálogo ficticio de 30 transportistas con filtro por puerto, distancia y un puntaje combinado (`?limite=`) para acotar a los N mejores candidatos, así "a quién llama Volta" es una decisión con lógica y no un hardcode
 - [ ] Bloque 3: conectar `record_commitment` real desde la tool del agente (Sofía) — hoy el endpoint ya funciona y está testeado, falta que el agente le pegue.
 - [ ] Bloque 4: usar `POST /llamadas` desde el flujo de llamada entrante real; validar con Marcos si la Realtime API soporta un modo "solo escucha" (audio mudo, sigue transcribiendo) para el modo escucha, o si hace falta un fallback con transcripción aparte.
 - [ ] Evaluar `condiciones` en texto libre del mandato (ej. "hasta 3 veces al mes") — hoy `guardrail.py` no las evalúa todavía, queda comentado en el código.

@@ -205,25 +205,39 @@ cerró con B).
 ## 4. A quién llama Volta: `find_carriers`
 
 Resuelve el problema de "con quién negocio" antes de arrancar la
-ronda de llamadas salientes. Hay un catálogo ficticio de
+ronda de llamadas salientes. Hay un catálogo ficticio de 30
 transportistas en `backend/app/carriers_data.py` (puerto que
 atienden, ubicación, disposición a negociar 1-5, puntualidad 1-5,
-tarifa de referencia) — `find_carriers` devuelve los candidatos para
-el puerto de la operación actual, ordenados por cercanía. El puerto
-sale de `operacion.puerto_origen`, no lo tiene que decir el modelo
-(mismo principio: nada de ids ni datos que el cliente ya sabe).
+tarifa de referencia, y dos tasas de aceptación 0-1: general y a
+corto plazo, ver más abajo) — `find_carriers` devuelve los candidatos
+para el puerto de la operación actual, ordenados por cercanía. El
+puerto sale de `operacion.puerto_origen`, no lo tiene que decir el
+modelo (mismo principio: nada de ids ni datos que el cliente ya sabe).
+
+Las dos tasas de aceptación miden cosas distintas: `tasa_aceptacion_general`
+es qué tan seguido el transportista dice que sí a tomar el trabajo, y
+`tasa_aceptacion_corto_plazo` es lo mismo pero pidiéndole con pocos
+días de anticipación — un transportista puede ser rígido para
+negociar precio y aun así aceptar casi siempre si le avisan con
+tiempo, o viceversa. Por diseño del fixture, la segunda nunca es
+mayor que la primera. Sirve para que Volta priorice a quién llamar
+primero cuando la ventana del mandato está ajustada.
 
 ```ts
 {
   type: "function",
   name: "find_carriers",
-  description: "Devuelve la lista de transportistas candidatos para el puerto de esta operación, ordenados por cercanía al puerto — así sabés a quién llamar primero. Incluye disposicion_a_negociar y puntualidad (1-5) de cada uno para priorizar con quién negociar de más. Llamala al arrancar, antes de la ronda de llamadas salientes.",
+  description: "Devuelve la lista de transportistas candidatos para el puerto de esta operación. Incluye disposicion_a_negociar y puntualidad (1-5), y tasa_aceptacion_general y tasa_aceptacion_corto_plazo (0-1, esta última es la tasa de aceptación cuando se pide con pocos días de anticipación) de cada uno. Usá limite para no recibir una lista larga de un mismo puerto: con limite, deja de ordenar por cercanía y devuelve los mejores N por un puntaje combinado — para una negociación en vivo, pedí limite: 3. Llamala al arrancar, antes de la ronda de llamadas salientes.",
   parameters: {
     type: "object",
     properties: {
       max_distancia_km: {
         type: "number",
         description: "Si se pasa, descarta transportistas a más de esta distancia del puerto (en km). Opcional — dejalo afuera si no hace falta filtrar por distancia.",
+      },
+      limite: {
+        type: "number",
+        description: "Cuántos candidatos como máximo querés recibir, elegidos por el mejor puntaje combinado (no solo por cercanía). Usá esto para acotar la ronda de negociación, ej. limite: 3.",
       },
     },
     required: [],
@@ -236,17 +250,30 @@ if (name === "find_carriers") {
   const { operacion } = await resolverOperacionActual();
   const params = new URLSearchParams({ puerto: operacion.puerto_origen });
   if (args.max_distancia_km != null) params.set("max_distancia_km", args.max_distancia_km);
+  if (args.limite != null) params.set("limite", args.limite);
   const candidatos = await (await fetch(`${BACKEND_URL}/transportistas?${params}`)).json();
   return { candidatos };
 }
 ```
 
 Cada candidato devuelto trae `id`, `nombre`, `telefono`,
-`disposicion_a_negociar`, `puntualidad`, `tarifa_referencia` y
-`distancia_km` (la distancia al puerto en km, para que la IA priorice
-a quién llamar primero y con quién negociar de más). El endpoint
-también sirve solo (`GET /transportistas?puerto=Manzanillo`) para que
-el dashboard de Juan Nicolás pueda mostrar el catálogo si hace falta.
+`disposicion_a_negociar`, `puntualidad`, `tarifa_referencia`,
+`tasa_aceptacion_general`, `tasa_aceptacion_corto_plazo`,
+`distancia_km` y `puntaje`. El endpoint también sirve solo
+(`GET /transportistas?puerto=Manzanillo`) para que el dashboard de
+Juan Nicolás pueda mostrar el catálogo si hace falta.
+
+**Con 30 transportistas en el catálogo, un puerto como Manzanillo
+devuelve 11 candidatos** — demasiados para negociar uno por uno en
+una demo de 24h. Por eso `limite` no corta la lista ordenada por
+cercanía: recalcula el `puntaje` (distancia + disposición a negociar
++ puntualidad + las dos tasas de aceptación, pesos en `PESOS_SCORE`
+dentro de `carriers_data.py`) y devuelve los mejores N. Ejemplo real
+con `GET /transportistas?puerto=Manzanillo&limite=3`: entran
+`t-manzanillo-plus`, `t-norte` y `t-express` — no los 3 más cercanos
+(eso hubiera incluido a `t-bajio`), sino los 3 con mejor combinación
+de cercanía, flexibilidad para negociar y probabilidad de aceptar
+el trabajo.
 
 ## Notas
 
