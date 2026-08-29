@@ -112,3 +112,33 @@ def test_reprogramacion_no_se_bloquea_por_la_reserva_previa():
     )
     resultado = validate_commitment(reprogramacion, mandato, commitments_previos=[reserva])
     assert resultado.aprobado
+
+
+def test_reserva_cancelada_no_bloquea_una_nueva_reserva():
+    """El escenario de la negociación con reconsideración: Volta cierra
+    con el transportista 1, encuentra algo mejor con el 2, cancela el
+    compromiso con el 1 — y ENTONCES la reserva con el 2 tiene que
+    poder aprobarse."""
+    mandato = _mandato(tope_precio=9000.0)
+    reserva_1 = Commitment(
+        **_commitment(mandato, monto=8500.0, contraparte="Transportes del Norte").model_dump(),
+        aprobado=True,
+        cancelado=True,
+    )
+    reserva_2 = _commitment(mandato, monto=8200.0, call_id="call2", contraparte="Transportes Express")
+    resultado = validate_commitment(reserva_2, mandato, commitments_previos=[reserva_1])
+    assert resultado.aprobado
+
+
+def test_reserva_vigente_sigue_bloqueando_una_segunda():
+    """Contraprueba: si la primera reserva NO está cancelada, la regla
+    anti-duplicado sigue funcionando como siempre."""
+    mandato = _mandato(tope_precio=9000.0)
+    reserva_1 = Commitment(
+        **_commitment(mandato, monto=8500.0).model_dump(),
+        aprobado=True,
+        cancelado=False,
+    )
+    reserva_2 = _commitment(mandato, monto=8200.0, call_id="call2")
+    resultado = validate_commitment(reserva_2, mandato, commitments_previos=[reserva_1])
+    assert not resultado.aprobado

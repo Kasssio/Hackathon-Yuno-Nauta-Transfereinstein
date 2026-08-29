@@ -129,6 +129,63 @@ def main() -> None:
     }).json()
     check("Escenario 5 — TRIAL BY FIRE: revocado en vivo → siguiente intento se rechaza", not r5["aprobado"], r5["motivo"])
 
+    # --- escenario 6: negociación con reconsideración (cierra con 1, aparece
+    # algo mejor con 2, cancela 1, cierra con 2 — y vuelve atrás una vez más) ---
+    op6 = requests.post(f"{BASE_URL}/operaciones", json={
+        "cliente": "Textiles Pacífico", "contenedor_id": "MSCU2222222",
+        "puerto_origen": "Manzanillo", "destino": "Guadalajara",
+    }).json()
+    mandato6 = requests.post(f"{BASE_URL}/mandatos", json={
+        "operacion_id": op6["id"], "tope_precio": 9000,
+        "ventana_inicio": "2026-08-28", "ventana_fin": "2026-08-30", "condiciones": [],
+        "vigente_hasta": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+    }).json()
+
+    reserva_t1 = requests.post(f"{BASE_URL}/commitments", json={
+        "operacion_id": op6["id"], "mandato_id": mandato6["id"], "call_id": "call-6a",
+        "contraparte": "Transportes del Norte", "tipo": "reserva",
+        "monto": 8800, "fecha_retiro": "2026-08-29", "detalle": "primera oferta",
+    }).json()
+    check("Escenario 6a — reserva con transportista 1 se aprueba", reserva_t1["aprobado"])
+
+    intento_directo_t2 = requests.post(f"{BASE_URL}/commitments", json={
+        "operacion_id": op6["id"], "mandato_id": mandato6["id"], "call_id": "call-6b",
+        "contraparte": "Transportes Express", "tipo": "reserva",
+        "monto": 8200, "fecha_retiro": "2026-08-29", "detalle": "mejor oferta, sin cancelar la anterior",
+    }).json()
+    check(
+        "Escenario 6b — reservar con transportista 2 SIN cancelar la 1 se rechaza",
+        not intento_directo_t2["aprobado"], intento_directo_t2["motivo"],
+    )
+
+    cancelacion_t1 = requests.post(
+        f"{BASE_URL}/commitments/{reserva_t1['commitment']['id']}/cancelar",
+        json={"motivo": "apareció una oferta mejor con Transportes Express"},
+    ).json()
+    check("Escenario 6c — cancelar la reserva con transportista 1", cancelacion_t1.get("cancelado") is True)
+
+    reserva_t2 = requests.post(f"{BASE_URL}/commitments", json={
+        "operacion_id": op6["id"], "mandato_id": mandato6["id"], "call_id": "call-6d",
+        "contraparte": "Transportes Express", "tipo": "reserva",
+        "monto": 8200, "fecha_retiro": "2026-08-29", "detalle": "ahora sí, con la 1 ya cancelada",
+    }).json()
+    check("Escenario 6d — ahora sí se aprueba la reserva con transportista 2", reserva_t2["aprobado"])
+
+    # transportista 1 vuelve con una oferta todavía mejor — Volta vuelve atrás
+    cancelacion_t2 = requests.post(
+        f"{BASE_URL}/commitments/{reserva_t2['commitment']['id']}/cancelar",
+        json={"motivo": "transportista 1 volvió con una oferta mejor"},
+    ).json()
+    reserva_t1_de_nuevo = requests.post(f"{BASE_URL}/commitments", json={
+        "operacion_id": op6["id"], "mandato_id": mandato6["id"], "call_id": "call-6e",
+        "contraparte": "Transportes del Norte", "tipo": "reserva",
+        "monto": 8000, "fecha_retiro": "2026-08-29", "detalle": "contraoferta, la mejor de las tres",
+    }).json()
+    check(
+        "Escenario 6e — vuelve atrás: cancela la 2, reserva de nuevo con transportista 1",
+        cancelacion_t2.get("cancelado") is True and reserva_t1_de_nuevo["aprobado"],
+    )
+
     # --- trail auditable ---
     trail = requests.get(f"{BASE_URL}/operaciones/{op['id']}/trail").json()
     check("Trail auditable tiene entradas para la operación 1", len(trail) > 0, f"{len(trail)} entradas")

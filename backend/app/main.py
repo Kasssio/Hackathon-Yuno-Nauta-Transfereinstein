@@ -1,13 +1,20 @@
 """
-API mínima del backend (Bloques 2-3 del roadmap).
+API del backend (Bloques 2-4 del roadmap).
 
 Endpoints pensados para 3 consumidores distintos:
 - El agente de Sofía/Marcos: POST /commitments (la tool `record_commitment`
-  le pega acá), y GET /mandatos/{id} para chequear el mandato antes de negociar.
-- El dashboard de Juan Nicolás: GET /operaciones/{id}, GET /commitments,
-  GET /trail (para las vistas humano / merchant / auditor).
+  le pega acá), GET /operaciones/{id}/mandato para chequear el mandato
+  antes de negociar, y POST /llamadas para dejar el resumen_sugerido
+  cuando Volta queda en "modo escucha" en una llamada escalada.
+- El dashboard de Juan Nicolás: GET /operaciones, GET /operaciones/{id},
+  GET /operaciones/{id}/commitments, GET /operaciones/{id}/llamadas,
+  GET /operaciones/{id}/trail — para las dos vistas (referente y chofer).
 - Los jueces en el trial by fire: POST /mandatos/{id}/revocar, para
   revocar el mandato en vivo y ver si el agente reacciona bien.
+
+CORS abierto a cualquier origen — es una demo de hackathon corriendo
+local, no un servicio en producción; así el frontend (Vite en otro
+puerto) puede pegarle sin configuración extra.
 
 Correr con: uvicorn app.main:app --reload --port 8000
 Docs interactivas (Swagger) en: http://localhost:8000/docs
@@ -19,25 +26,42 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from .guardrail import validate_commitment
+from .carriers_data import buscar_candidatos
 from .models import (
+    CallLogEntry,
+    CallLogEntryCreate,
+    CancelarCommitmentRequest,
     Commitment,
     CommitmentCreate,
+    CotizacionCreate,
     Mandato,
     MandatoCreate,
     Operacion,
     OperacionCreate,
-    CallLogEntry,
 )
 from .storage import store
 
 app = FastAPI(title="Challenge 4 — The Agent on the Line — backend")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # ---------------------------------------------------------------------------
 # Operaciones
 # ---------------------------------------------------------------------------
+
+@app.get("/operaciones", response_model=List[Operacion])
+def listar_operaciones() -> List[Operacion]:
+    return list(store.operaciones.values())
+
 
 @app.post("/operaciones", response_model=Operacion)
 def crear_operacion(payload: OperacionCreate) -> Operacion:
@@ -54,6 +78,36 @@ def obtener_operacion(operacion_id: str) -> Operacion:
     if not op:
         raise HTTPException(404, "operación no encontrada")
     return op
+
+
+@app.get("/operaciones/{operacion_id}/mandato", response_model=Mandato)
+def mandato_de_la_operacion(operacion_id: str) -> Mandato:
+    """Atajo para el frontend: no hace falta guardarse el mandato_id
+    aparte, alcanza con el id de la operación."""
+    op = store.operaciones.get(operacion_id)
+    if not op or not op.mandato_id:
+        raise HTTPException(404, "esta operación todavía no tiene mandato")
+    mandato = store.mandatos.get(op.mandato_id)
+    if not mandato:
+        raise HTTPException(404, "mandato no encontrado")
+    return mandato
+
+
+# ---------------------------------------------------------------------------
+# Transportistas — resuelve "a quién llama Volta". Filtro de candidatos
+# por puerto (y opcionalmente por distancia máxima al puerto) sobre el
+# catálogo ficticio de backend/app/carriers_data.py. Sofía/Marcos usan
+# esto ANTES de arrancar la ronda de llamadas salientes, así la lista de
+# "a quién negociar" es una decisión con lógica (puerto, distancia,
+# disposición a negociar, puntualidad), no un transportista hardcodeado
+# en el prompt del agente.
+# ---------------------------------------------------------------------------
+
+@app.get("/transportistas")
+def listar_transportistas(
+    puerto: Optional[str] = None, max_distancia_km: Optional[float] = None
+) -> List[dict]:
+    return buscar_candidatos(puerto=puerto, max_distancia_km=max_distancia_km)
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +159,25 @@ def revocar_mandato(mandato_id: str) -> Mandato:
 
 
 # ---------------------------------------------------------------------------
-# Commitments — acá pega la tool `record_commitment` del agente
+# Cotizaciones — "several negotiations, one best choice". Acá pega la
+# tool `request_quote`: registra una oferta de un transportista SIN
+# comprometerse. No corre el guardrail — no hay nada que cuidar todavía,
+# es solo para poder comparar antes de elegir con quién cerrar.
+# Quedan en el trail auditable (evento "cotizacion_recibida"), así que
+# GET /operaciones/{id}/trail también sirve para ver todas las ofertas
+# que se compararon, no solo la que se terminó reservando.
+# ---------------------------------------------------------------------------
+
+@app.post("/cotizaciones")
+def registrar_cotizacion(payload: CotizacionCreate) -> dict:
+    store.append_audit("cotizacion_recibida", payload.model_dump(mode="json"))
+    return {"registrada": True}
+
+
+# ---------------------------------------------------------------------------
+# Commitments — acá pega la tool `record_commitment` del agente, y
+# también el botón "Confirmar" del referente cuando acepta un
+# resumen_sugerido de una llamada escalada.
 # ---------------------------------------------------------------------------
 
 @app.post("/commitments")
@@ -125,6 +197,11 @@ def registrar_commitment(payload: CommitmentCreate) -> dict:
         motivo_rechazo=None if resultado.aprobado else resultado.motivo,
     )
     store.commitments[commitment.id] = commitment
+
+    llamada = store.llamadas.get(payload.call_id)
+    if llamada:
+        llamada.commitments_ids.append(commitment.id)
+
     store.save()
     store.append_audit(
         "commitment_evaluado",
@@ -146,24 +223,75 @@ def listar_commitments(operacion_id: str) -> List[Commitment]:
     return [c for c in store.commitments.values() if c.operacion_id == operacion_id]
 
 
+@app.post("/commitments/{commitment_id}/cancelar", response_model=Commitment)
+def cancelar_commitment(commitment_id: str, payload: CancelarCommitmentRequest) -> Commitment:
+    """Cancela un commitment ya aprobado — ej. Volta encontró una mejor
+    oferta con otro transportista y le avisa al primero que no sigue
+    en pie. No se borra: queda marcado como cancelado, con motivo, y
+    el trail auditable guarda el evento. Después de esto, el guardrail
+    ya no lo cuenta como reserva vigente para la operación."""
+    commitment = store.commitments.get(commitment_id)
+    if not commitment:
+        raise HTTPException(404, "commitment no encontrado")
+    if not commitment.aprobado:
+        raise HTTPException(400, "solo se puede cancelar un commitment que estaba aprobado")
+    if commitment.cancelado:
+        raise HTTPException(400, "este commitment ya estaba cancelado")
+
+    commitment.cancelado = True
+    commitment.cancelado_en = datetime.now(timezone.utc)
+    commitment.motivo_cancelacion = payload.motivo
+    store.save()
+    store.append_audit(
+        "commitment_cancelado",
+        {
+            "operacion_id": commitment.operacion_id,
+            "commitment_id": commitment.id,
+            "motivo": payload.motivo,
+        },
+    )
+    return commitment
+
+
 # ---------------------------------------------------------------------------
-# Llamadas (historial simple — se completa en el Bloque 4)
+# Llamadas — historial + resumen_sugerido del "modo escucha"
 # ---------------------------------------------------------------------------
 
 @app.post("/llamadas", response_model=CallLogEntry)
-def registrar_llamada(entry: CallLogEntry) -> CallLogEntry:
+def registrar_llamada(payload: CallLogEntryCreate) -> CallLogEntry:
+    entry = CallLogEntry(**payload.model_dump())
     store.llamadas[entry.id] = entry
     store.save()
+    if entry.resumen_sugerido:
+        store.append_audit(
+            "resumen_sugerido_generado",
+            {"operacion_id": entry.operacion_id, "call_id": entry.id},
+        )
     return entry
 
 
+@app.get("/operaciones/{operacion_id}/llamadas", response_model=List[CallLogEntry])
+def listar_llamadas(operacion_id: str) -> List[CallLogEntry]:
+    return [l for l in store.llamadas.values() if l.operacion_id == operacion_id]
+
+
 # ---------------------------------------------------------------------------
-# Trail auditable — para la vista del auditor
+# Trail auditable — para la vista del referente
 # ---------------------------------------------------------------------------
 
 @app.get("/operaciones/{operacion_id}/trail")
 def trail_auditable(operacion_id: str) -> List[dict]:
     return store.read_audit_trail(operacion_id)
+
+
+# ---------------------------------------------------------------------------
+# Debug — para poder rehearsar el trial by fire sin borrar archivos a mano
+# ---------------------------------------------------------------------------
+
+@app.post("/debug/reset")
+def reset_todo() -> dict:
+    store.reset()
+    return {"status": "reseteado"}
 
 
 @app.get("/health")

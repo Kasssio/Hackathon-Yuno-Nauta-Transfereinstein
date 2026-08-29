@@ -41,11 +41,17 @@ def validate_commitment(
     """Valida un commitment contra su mandato. No modifica nada, solo decide.
 
     `commitments_previos` son los commitments ya registrados para la
-    MISMA operación (aprobados o no) — se usan para detectar el
-    intento adversarial de "partir la compra" en varias llamadas para
-    esquivar el tope de precio (bonus del brief: "defensa ante un
-    agente adversarial intentando comprar fuera de su mandato por
-    caminos creativos").
+    MISMA operación (aprobados o no, cancelados o no) — se usan para
+    detectar el intento adversarial de "partir la compra" en varias
+    llamadas para esquivar el tope de precio (bonus del brief: "defensa
+    ante un agente adversarial intentando comprar fuera de su mandato
+    por caminos creativos").
+
+    Un commitment CANCELADO no cuenta como reserva vigente: si Volta
+    negoció con el transportista 1, encontró algo mejor con el 2, y
+    canceló el compromiso con el 1 antes de cerrar con el 2, la segunda
+    reserva tiene que poder aprobarse — eso es "several negotiations,
+    one best choice" con reconsideración, no partir la compra.
     """
 
     if mandato.id != commitment.mandato_id:
@@ -74,7 +80,7 @@ def validate_commitment(
             f"({mandato.ventana_inicio} a {mandato.ventana_fin})",
         )
 
-    if commitment.tipo == TipoCommitment.reserva and _ya_hay_reserva_aprobada(
+    if commitment.tipo == TipoCommitment.reserva and _ya_hay_reserva_vigente(
         commitment.operacion_id, commitments_previos
     ):
         return GuardrailResult(
@@ -89,8 +95,13 @@ def validate_commitment(
     return GuardrailResult(True, "")
 
 
-def _ya_hay_reserva_aprobada(operacion_id: str, previos: Iterable[Commitment]) -> bool:
+def _ya_hay_reserva_vigente(operacion_id: str, previos: Iterable[Commitment]) -> bool:
+    """Vigente = aprobada y NO cancelada. Una reserva cancelada libera
+    el camino para reservar con otro transportista."""
     return any(
-        c.operacion_id == operacion_id and c.tipo == TipoCommitment.reserva and c.aprobado
+        c.operacion_id == operacion_id
+        and c.tipo == TipoCommitment.reserva
+        and c.aprobado
+        and not c.cancelado
         for c in previos
     )

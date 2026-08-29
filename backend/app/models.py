@@ -16,6 +16,10 @@ Las 4 "cosas" del dominio (Challenge 4 — The Agent on the Line):
 - Commitment: lo que Volta acuerda en una llamada (con quién, cuánto,
   para cuándo) — esto es lo que el guardrail valida antes de aceptarlo.
 - CallLogEntry: el registro de cada llamada (para el trail auditable).
+  Cuando la llamada es escalada, Volta puede quedar en "modo escucha" y
+  dejar un `resumen_sugerido` — un borrador de commitment que el
+  referente revisa y confirma desde el dashboard (eso dispara un
+  POST /commitments normal, con el guardrail de siempre).
 """
 
 from __future__ import annotations
@@ -82,6 +86,25 @@ class Operacion(OperacionCreate):
 
 
 # ---------------------------------------------------------------------------
+# Cotizacion — una oferta de un transportista, SIN comprometerse todavía.
+#
+# La consigna pide explícitamente "several negotiations, one best choice":
+# Volta tiene que poder cotizar con varios transportistas y recién comprometerse
+# con el mejor. Esto es justo lo que separa "cotizar" (esto) de "cerrar el trato"
+# (Commitment, abajo) — cotizar no pasa por el guardrail porque no compromete
+# nada todavía, no hay riesgo de mandato que cuidar.
+# ---------------------------------------------------------------------------
+
+class CotizacionCreate(BaseModel):
+    operacion_id: str
+    call_id: str
+    contraparte: str
+    monto: float = Field(..., gt=0)
+    fecha_retiro: date
+    detalle: str = ""
+
+
+# ---------------------------------------------------------------------------
 # Commitment
 # ---------------------------------------------------------------------------
 
@@ -95,7 +118,9 @@ class CommitmentCreate(BaseModel):
     """Lo que el agente manda cuando cierra un acuerdo en una llamada.
 
     Esto es el body que va a pegarle la tool `record_commitment` del
-    agente (la que arma Sofía) al endpoint POST /commitments.
+    agente (la que arma Sofía) al endpoint POST /commitments — y
+    también lo que postea el referente a mano cuando confirma un
+    `resumen_sugerido` de una llamada escalada.
     """
 
     operacion_id: str
@@ -113,21 +138,48 @@ class Commitment(CommitmentCreate):
     creado_en: datetime = Field(default_factory=_now)
     aprobado: bool
     motivo_rechazo: Optional[str] = None
+    # Un commitment aprobado puede cancelarse después (ej. apareció una
+    # oferta mejor con otro transportista) — se guarda como cancelado,
+    # nunca se borra, así el trail auditable conserva la historia completa.
+    cancelado: bool = False
+    cancelado_en: Optional[datetime] = None
+    motivo_cancelacion: Optional[str] = None
+
+
+class CancelarCommitmentRequest(BaseModel):
+    motivo: str = ""
 
 
 # ---------------------------------------------------------------------------
 # Historial de llamadas
 # ---------------------------------------------------------------------------
 
-class CallLogEntry(BaseModel):
-    id: str = Field(default_factory=_new_id)
+class ResumenSugerido(BaseModel):
+    """Borrador de commitment que arma Volta en 'modo escucha' durante
+    una llamada escalada. No se guarda como Commitment todavía — el
+    referente lo revisa en el dashboard y lo confirma (eso sí dispara
+    el POST /commitments real, con el guardrail de siempre)."""
+
+    contraparte: str = ""
+    monto: Optional[float] = None
+    fecha_retiro: Optional[date] = None
+    detalle: str = ""
+
+
+class CallLogEntryCreate(BaseModel):
     operacion_id: str
     call_id: str
     direccion: str  # "saliente" | "entrante"
     contraparte: str
-    inicio: datetime = Field(default_factory=_now)
-    fin: Optional[datetime] = None
     resumen: str = ""
-    commitments_ids: List[str] = Field(default_factory=list)
     escalado: bool = False
     motivo_escalacion: Optional[str] = None
+    resumen_sugerido: Optional[ResumenSugerido] = None
+
+
+class CallLogEntry(CallLogEntryCreate):
+    id: str = Field(default_factory=_new_id)
+    inicio: datetime = Field(default_factory=_now)
+    fin: Optional[datetime] = None
+    commitments_ids: List[str] = Field(default_factory=list)
+    creado_en: datetime = Field(default_factory=_now)

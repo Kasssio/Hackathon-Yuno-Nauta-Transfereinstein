@@ -106,5 +106,17 @@ class Store:
         with _lock:
             self._save()
 
+    def reset(self) -> None:
+        """Vacía todo el estado y el trail — para poder rehearsar el
+        trial by fire las veces que hagan falta sin editar archivos a
+        mano. Pensado para /debug/reset, no para producción."""
+        with _lock:
+            self.mandatos.clear()
+            self.operaciones.clear()
+            self.commitments.clear()
+            self.llamadas.clear()
+            self._save()
+            AUDIT_LOG_FILE.unlink(missing_ok=True)
+
 
 store = Store()
