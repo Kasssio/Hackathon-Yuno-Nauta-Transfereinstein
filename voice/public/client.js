@@ -3,8 +3,13 @@ let turn = 0;
 let userStoppedAt = null;
 let analyser, analyserData, latencyRAF = null;
 
+let escalado = false;
+let esperandoFraseDeTraspaso = false;
+let motivoEscalacion = "";
+
 const statusEl = () => document.getElementById("status");
 const setStatus = (s) => (statusEl().textContent = s);
+const btn = (id) => document.getElementById(id);
 
 // ===== PUNTO DE INTEGRACIÓN: transcripción =====
 export function onTranscript(role, text) {}
@@ -108,13 +113,25 @@ export async function onToolCall(name, args) {
     return { aprobado: data.aprobado, motivo: data.motivo };
   }
 
+  if (name === "escalate_to_human") {
+    motivoEscalacion = args.motivo || "";
+    esperandoFraseDeTraspaso = true;
+    return {
+      ok: true,
+      instruccion:
+        "Decile a la contraparte, en UNA sola frase, que la pasás con una persona del equipo. Nada más.",
+    };
+  }
+
   return { error: `tool desconocida: ${name}` };
 }
 
 function armLatencyProbe() {
+  if (escalado) return;
   userStoppedAt = performance.now();
   if (latencyRAF || !analyser) return;
   const tick = () => {
+    if (escalado) { latencyRAF = null; return; }
     analyser.getByteTimeDomainData(analyserData);
     let peak = 0;
     for (let i = 0; i < analyserData.length; i++) {
@@ -133,11 +150,87 @@ function armLatencyProbe() {
   latencyRAF = requestAnimationFrame(tick);
 }
 
+function setTurnDetection(activo) {
+  dc.send(JSON.stringify({
+    type: "session.update",
+    session: {
+      type: "realtime",
+      audio: {
+        input: {
+          transcription: { model: "gpt-live-transcribe" },
+          turn_detection: {
+            type: "semantic_vad",
+            create_response: activo,
+            interrupt_response: activo,
+          },
+        },
+      },
+    },
+  }));
+}
+
+function entrarEnEscalacion() {
+  escalado = true;
+  setTurnDetection(false);
+  dc.send(JSON.stringify({
+    type: "response.create",
+    response: {
+      conversation: "none",
+      metadata: { topic: "resumen_escalacion" },
+      output_modalities: ["text"],
+      instructions:
+        "Resumí la llamada hasta ahora para el humano del equipo que la está por tomar. " +
+        "Máximo 6 líneas, sin saludos: con quién se está hablando, qué pidió, qué se ofreció, " +
+        "dónde está el desacuerdo, y qué falta cerrar.",
+    },
+  }));
+  setStatus("ESCALADO — Volta escucha, hablá vos");
+  btn("escalar").disabled = true;
+  btn("devolver").disabled = false;
+  console.log("[escalacion] inicio. motivo:", motivoEscalacion);
+}
+
+function volverAVolta() {
+  escalado = false;
+  setTurnDetection(true);
+  dc.send(JSON.stringify({
+    type: "response.create",
+    response: {
+      instructions:
+        "La conversación la tomó un humano de tu equipo y ya terminó. En base a TODO lo que " +
+        "escuchaste durante ese tramo, registrá el commitment que se haya acordado. " +
+        "Si no se acordó nada concreto, decilo en una frase corta y no registres nada.",
+    },
+  }));
+  setStatus("conectado");
+  btn("escalar").disabled = false;
+  btn("devolver").disabled = true;
+  console.log("[escalacion] fin, vuelve Volta");
+}
+
+function escalarManual() {
+  motivoEscalacion = "escalación manual desde el panel";
+  esperandoFraseDeTraspaso = true;
+  dc.send(JSON.stringify({
+    type: "response.create",
+    response: {
+      instructions:
+        "Decile a la contraparte, en UNA sola frase, que la pasás con una persona del equipo. Nada más.",
+    },
+  }));
+}
+
+function mostrarResumen(texto) {
+  btn("resumen").textContent = texto;
+  console.log("[resumen para el humano]\n" + texto);
+  onTranscript("resumen", texto);
+}
+
 async function handleEvent(ev) {
   if (ev.type === "input_audio_buffer.speech_stopped") armLatencyProbe();
 
   if (ev.type === "conversation.item.input_audio_transcription.completed") {
-    console.log("[user]", ev.transcript);
+    console.log(escalado ? "[user/escalado]" : "[user]", ev.transcript);
     onTranscript("user", ev.transcript);
   }
 
@@ -147,14 +240,27 @@ async function handleEvent(ev) {
   }
 
   if (ev.type === "response.done") {
+    if (ev.response.metadata?.topic === "resumen_escalacion") {
+      const parte = (ev.response.output?.[0]?.content ?? []).find((c) => c.type === "output_text");
+      mostrarResumen(parte?.text ?? "(sin resumen)");
+      return;
+    }
+
+    let huboToolCall = false;
     for (const item of ev.response.output ?? []) {
       if (item.type !== "function_call") continue;
+      huboToolCall = true;
       const result = await onToolCall(item.name, JSON.parse(item.arguments || "{}"));
       dc.send(JSON.stringify({
         type: "conversation.item.create",
         item: { type: "function_call_output", call_id: item.call_id, output: JSON.stringify(result) },
       }));
       dc.send(JSON.stringify({ type: "response.create" }));
+    }
+
+    if (esperandoFraseDeTraspaso && !huboToolCall) {
+      esperandoFraseDeTraspaso = false;
+      entrarEnEscalacion();
     }
   }
 
@@ -196,6 +302,7 @@ async function connect() {
 
     await pc.setRemoteDescription({ type: "answer", sdp });
     setStatus("conectado");
+    btn("escalar").disabled = false;
   } catch (e) {
     console.error(e);
     setStatus("error: " + e.message);
@@ -208,7 +315,11 @@ function hangup() {
   pc?.close();
   micStream?.getTracks().forEach((t) => t.stop());
   pc = dc = analyser = null;
+  escalado = false;
+  esperandoFraseDeTraspaso = false;
   setStatus("desconectado");
+  btn("escalar").disabled = true;
+  btn("devolver").disabled = true;
 }
 
 function interrupt() {
@@ -216,6 +327,8 @@ function interrupt() {
   console.log("[barge-in] response.cancel enviado");
 }
 
-document.getElementById("connect").onclick = connect;
-document.getElementById("hangup").onclick = hangup;
-document.getElementById("interrupt").onclick = interrupt;
+btn("connect").onclick = connect;
+btn("hangup").onclick = hangup;
+btn("interrupt").onclick = interrupt;
+btn("escalar").onclick = escalarManual;
+btn("devolver").onclick = volverAVolta;
