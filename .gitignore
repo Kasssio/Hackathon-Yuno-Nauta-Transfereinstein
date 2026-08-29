@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Estado local del backend (no versionar datos de prueba)
+backend/data/
+
+# Node (por si Voice Pipeline / Dashboard usan Node)
+node_modules/
+
+# Sistema
+.DS_Store
