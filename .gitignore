@@ -12,3 +12,9 @@ node_modules/
 
 # Sistema
 .DS_Store
+
+# Secretos — NUNCA versionar (el repo del hackathon es público)
+.env
+.env.local
+*.env
+!.env.example
