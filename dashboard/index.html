@@ -1,0 +1,1319 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volta — Consola de Operación</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* ==========================================================================
+   TOKENS — tema claro en :root, oscuro redefinido dos veces (media + stamp).
+   Ningún color se define únicamente dentro de un bloque de tema.
+   ========================================================================== */
+:root {
+  --ground:      #e9edec;
+  --surface:     #ffffff;
+  --surface-2:   #f3f6f5;
+  --surface-3:   #e4eae9;
+  --line:        #d2dad9;
+  --line-soft:   #e2e8e7;
+  --ink:         #0f1b1d;
+  --ink-2:       #4c5c5e;
+  --ink-3:       #7d8c8d;
+  --accent:      #00706c;
+  --accent-ink:  #ffffff;
+  --accent-wash: #e2efee;
+  --ok:          #12734a;
+  --ok-wash:     #e2f0e9;
+  --warn:        #9a5405;
+  --warn-wash:   #fbeddc;
+  --bad:         #a3282a;
+  --bad-wash:    #f8e6e5;
+  --shadow:      0 1px 2px rgba(15, 27, 29, .06), 0 8px 24px -12px rgba(15, 27, 29, .18);
+
+  --r:   6px;
+  --r-lg: 10px;
+  --gap: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #080f11;
+    --surface:     #0f1b1e;
+    --surface-2:   #16252a;
+    --surface-3:   #1d3037;
+    --line:        #22373d;
+    --line-soft:   #1a2a2f;
+    --ink:         #e1eae9;
+    --ink-2:       #9db1b1;
+    --ink-3:       #6b8083;
+    --accent:      #47c3b4;
+    --accent-ink:  #04211f;
+    --accent-wash: #10312f;
+    --ok:          #45c185;
+    --ok-wash:     #0f2e21;
+    --warn:        #e0a052;
+    --warn-wash:   #33240f;
+    --bad:         #ef8079;
+    --bad-wash:    #3a1a19;
+    --shadow:      0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:      #080f11;
+  --surface:     #0f1b1e;
+  --surface-2:   #16252a;
+  --surface-3:   #1d3037;
+  --line:        #22373d;
+  --line-soft:   #1a2a2f;
+  --ink:         #e1eae9;
+  --ink-2:       #9db1b1;
+  --ink-3:       #6b8083;
+  --accent:      #47c3b4;
+  --accent-ink:  #04211f;
+  --accent-wash: #10312f;
+  --ok:          #45c185;
+  --ok-wash:     #0f2e21;
+  --warn:        #e0a052;
+  --warn-wash:   #33240f;
+  --bad:         #ef8079;
+  --bad-wash:    #3a1a19;
+  --shadow:      0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
+}
+
+/* ==========================================================================
+   BASE
+   ========================================================================== */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono {
+  font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Etiqueta de panel / eyebrow: la voz condensada del sistema. */
+.label {
+  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ==========================================================================
+   ESQUELETO — consola a pantalla completa
+   ========================================================================== */
+.consola {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+}
+
+.cuerpo {
+  display: grid;
+  grid-template-columns: 310px minmax(0, 1fr) 400px;
+  gap: var(--gap);
+  padding: var(--gap);
+  min-height: 0;
+}
+
+.columna {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-height: 0;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  flex: none;
+}
+
+.panel__body { padding: 14px; overflow-y: auto; min-height: 0; }
+.panel__body--flush { padding: 0; }
+.panel--crece { flex: 1; min-height: 0; }
+
+/* ==========================================================================
+   HEADER
+   ========================================================================== */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 0 var(--gap);
+  height: 62px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+.marca { display: flex; align-items: baseline; gap: 9px; }
+
+.marca__nombre {
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-weight: 700;
+  font-size: 21px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.marca__op { font-size: 12px; color: var(--ink-3); }
+
+.ruta { display: flex; align-items: center; gap: 9px; font-size: 14px; }
+.ruta__punto { font-weight: 600; }
+.ruta__flecha { color: var(--accent); font-weight: 600; }
+
+.header__meta {
+  display: flex;
+  gap: 22px;
+  margin-left: auto;
+  align-items: center;
+}
+
+.metrica { display: flex; flex-direction: column; gap: 1px; }
+.metrica__valor { font-size: 14px; font-weight: 600; }
+
+/* Badge de estado de la operación */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px 5px 9px;
+  border-radius: 100px;
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  border: 1px solid;
+}
+.badge__punto { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+
+.badge--en_curso { color: var(--accent); background: var(--accent-wash); border-color: var(--accent); }
+.badge--escalado { color: var(--warn);   background: var(--warn-wash);   border-color: var(--warn); }
+.badge--cerrado  { color: var(--ink-2);  background: var(--surface-2);   border-color: var(--line); }
+
+.badge--en_curso .badge__punto { animation: latido 1.9s ease-in-out infinite; }
+@keyframes latido { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+/* ==========================================================================
+   MANDATO
+   ========================================================================== */
+.mandato { display: flex; flex-direction: column; gap: 14px; }
+
+.dato { display: flex; flex-direction: column; gap: 3px; }
+.dato__valor { font-size: 15px; font-weight: 600; }
+.dato__valor--grande { font-size: 26px; font-weight: 600; letter-spacing: -.01em; }
+.dato__nota { font-size: 12px; color: var(--ink-3); }
+
+/* Regla del tope: hace legible de un vistazo cuánto margen queda. */
+.regla { display: flex; flex-direction: column; gap: 5px; }
+.regla__pista {
+  position: relative;
+  height: 6px;
+  background: var(--surface-3);
+  border-radius: 100px;
+  overflow: hidden;
+}
+.regla__relleno {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  border-radius: 100px;
+  transition: width .5s cubic-bezier(.2, .7, .3, 1);
+}
+.regla__relleno--excede { background: var(--bad); }
+.regla__pie { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); }
+
+.condiciones { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.condiciones li {
+  font-size: 12px;
+  color: var(--ink-2);
+  padding-left: 13px;
+  position: relative;
+}
+.condiciones li::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 7px;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+
+.separador { height: 1px; background: var(--line-soft); border: 0; margin: 0; }
+
+/* ==========================================================================
+   TRANSCRIPCIÓN EN VIVO
+   ========================================================================== */
+.transcripcion {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.turno { display: flex; flex-direction: column; gap: 4px; max-width: 76%; }
+.turno--agent { align-self: flex-start; }
+.turno--user  { align-self: flex-end; align-items: flex-end; }
+
+.turno__quien { display: flex; align-items: center; gap: 6px; }
+
+.burbuja {
+  padding: 9px 13px;
+  border-radius: var(--r-lg);
+  font-size: 14px;
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+.turno--agent .burbuja {
+  background: var(--accent-wash);
+  border-color: var(--accent-wash);
+  border-bottom-left-radius: 3px;
+  color: var(--ink);
+}
+.turno--user .burbuja {
+  background: var(--surface-2);
+  border-color: var(--line-soft);
+  border-bottom-right-radius: 3px;
+  color: var(--ink);
+}
+
+.turno__hora { font-size: 10px; color: var(--ink-3); }
+
+/* Marca inline: en este turno se disparó una evaluación del guardrail. */
+.marca-guardrail {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 11px;
+  border-radius: 100px;
+  border: 1px dashed var(--line);
+  background: var(--surface-2);
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.marca-guardrail--ok  { border-color: var(--ok);  color: var(--ok);  background: var(--ok-wash); border-style: solid; }
+.marca-guardrail--bad { border-color: var(--bad); color: var(--bad); background: var(--bad-wash); border-style: solid; }
+
+/* Indicador de que la contraparte / Volta está hablando */
+.hablando {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  padding: 8px 13px;
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+}
+.hablando--user { align-self: flex-end; }
+.hablando__punto {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  animation: rebote 1.2s ease-in-out infinite;
+}
+.hablando__punto:nth-child(2) { animation-delay: .15s; }
+.hablando__punto:nth-child(3) { animation-delay: .3s; }
+@keyframes rebote { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
+
+.aparece { animation: aparece .32s cubic-bezier(.2, .7, .3, 1); }
+@keyframes aparece {
+  from { opacity: 0; transform: translateY(7px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.linea-vivo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--bad);
+}
+.linea-vivo__punto {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: latido 1.4s ease-in-out infinite;
+}
+
+/* ==========================================================================
+   COMMITMENTS
+   ========================================================================== */
+.tabla { width: 100%; border-collapse: collapse; }
+
+.tabla thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.tabla thead th:last-child, .tabla td:last-child { text-align: right; }
+
+.tabla td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: top;
+}
+.tabla tbody tr:last-child td { border-bottom: 0; }
+
+.commit__carrier { font-weight: 600; font-size: 13px; }
+.commit__tipo { font-size: 11px; color: var(--ink-3); text-transform: capitalize; }
+.commit__monto { font-weight: 600; font-size: 13px; }
+
+/* Chequeos del guardrail, visibles por fila: la decisión es determinística,
+   y esto lo muestra en vez de pedir que se confíe en el resultado. */
+.chequeos { display: flex; flex-direction: column; gap: 2px; margin-top: 5px; }
+.chequeo {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.chequeo__marca { font-weight: 700; width: 9px; flex: none; text-align: center; }
+.chequeo--pasa   .chequeo__marca { color: var(--ok); }
+.chequeo--falla  .chequeo__marca { color: var(--bad); }
+.chequeo--falla  { color: var(--bad); }
+
+.estado {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 100px;
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid;
+}
+.estado--confirmado { color: var(--ok);    background: var(--ok-wash);    border-color: var(--ok); }
+.estado--rechazado  { color: var(--bad);   background: var(--bad-wash);   border-color: var(--bad); }
+.estado--pendiente  { color: var(--ink-2); background: var(--surface-2);  border-color: var(--line); }
+
+.motivo {
+  margin-top: 5px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--bad);
+  text-align: left;
+}
+
+.fila-nueva { animation: destella 1.6s ease-out; }
+@keyframes destella {
+  0%   { background: var(--accent-wash); }
+  100% { background: transparent; }
+}
+
+/* ==========================================================================
+   ESCALACIÓN — solo visible cuando hay trigger
+   ========================================================================== */
+.panel--escalacion { border-color: var(--warn); }
+.panel--escalacion .panel__head {
+  background: var(--warn-wash);
+  border-bottom-color: var(--warn);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+.panel--escalacion .panel__head .label { color: var(--warn); }
+
+.escalacion { display: flex; flex-direction: column; gap: 11px; }
+.escalacion + .escalacion { padding-top: 11px; border-top: 1px solid var(--line-soft); }
+
+.escalacion__trigger {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 3px 9px;
+  border-radius: var(--r);
+  background: var(--warn-wash);
+  color: var(--warn);
+  border: 1px solid var(--warn);
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.escalacion__que { font-size: 13px; line-height: 1.5; }
+.escalacion__pie {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.escalacion__quien { color: var(--ink-2); font-weight: 600; }
+
+/* ==========================================================================
+   HISTORIAL DE LLAMADAS
+   ========================================================================== */
+.historial { list-style: none; margin: 0; padding: 0; }
+
+.llamada {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.llamada:last-child { border-bottom: 0; }
+
+.llamada__hora { font-size: 11px; color: var(--ink-3); grid-row: span 2; padding-top: 1px; }
+.llamada__carrier { font-size: 13px; font-weight: 600; }
+.llamada__resultado { font-size: 11.5px; color: var(--ink-2); line-height: 1.4; }
+.llamada__resultado--escalado { color: var(--warn); }
+
+.vacio {
+  padding: 22px 14px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="consola">
+
+  <!-- 1 · HEADER: identidad de la operación + estado ---------------------- -->
+  <header class="header">
+    <div class="marca">
+      <span class="marca__nombre">Volta</span>
+      <span class="marca__op mono" id="op-id">—</span>
+    </div>
+
+    <div class="ruta">
+      <span class="ruta__punto" id="op-origen">—</span>
+      <span class="ruta__flecha">→</span>
+      <span class="ruta__punto" id="op-destino">—</span>
+    </div>
+
+    <div class="header__meta">
+      <div class="metrica">
+        <span class="label">Cliente</span>
+        <span class="metrica__valor" id="op-cliente">—</span>
+      </div>
+      <div class="metrica">
+        <span class="label">Contenedor</span>
+        <span class="metrica__valor mono" id="op-contenedor">—</span>
+      </div>
+      <span class="badge badge--en_curso" id="op-estado">
+        <span class="badge__punto"></span><span id="op-estado-texto">En curso</span>
+      </span>
+    </div>
+  </header>
+
+  <div class="cuerpo">
+
+    <!-- COLUMNA IZQUIERDA: mandato (fijo) + historial ------------------- -->
+    <div class="columna">
+
+      <!-- 2 · MANDATO -->
+      <section class="panel">
+        <div class="panel__head">
+          <span class="label">Mandato</span>
+          <span class="label mono" id="mandato-id">—</span>
+        </div>
+        <div class="panel__body">
+          <div class="mandato">
+            <div class="dato">
+              <span class="label">Precio tope</span>
+              <span class="dato__valor--grande mono" id="mandato-tope">—</span>
+            </div>
+
+            <div class="regla">
+              <div class="regla__pista">
+                <div class="regla__relleno" id="regla-relleno" style="width: 0%"></div>
+              </div>
+              <div class="regla__pie">
+                <span id="regla-actual">Sin acuerdo aún</span>
+                <span class="mono" id="regla-tope">—</span>
+              </div>
+            </div>
+
+            <hr class="separador">
+
+            <div class="dato">
+              <span class="label">Ventana de retiro</span>
+              <span class="dato__valor" id="mandato-ventana">—</span>
+            </div>
+
+            <div class="dato">
+              <span class="label">Tiempo restante</span>
+              <span class="dato__valor mono" id="mandato-restante">—</span>
+              <span class="dato__nota" id="mandato-vence">—</span>
+            </div>
+
+            <div class="dato" id="condiciones-bloque" hidden>
+              <span class="label">Condiciones</span>
+              <ul class="condiciones" id="mandato-condiciones"></ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6 · HISTORIAL DE LLAMADAS -->
+      <section class="panel panel--crece">
+        <div class="panel__head">
+          <span class="label">Llamadas anteriores</span>
+          <span class="label" id="historial-total">0</span>
+        </div>
+        <div class="panel__body panel__body--flush">
+          <ul class="historial" id="historial"></ul>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- COLUMNA CENTRO: llamada en vivo -------------------------------- -->
+    <div class="columna">
+      <!-- 3 · TRANSCRIPCIÓN EN VIVO -->
+      <section class="panel panel--crece">
+        <div class="panel__head">
+          <span class="label">Llamada en curso · <span id="llamada-contraparte">—</span></span>
+          <span class="linea-vivo" id="linea-vivo" hidden>
+            <span class="linea-vivo__punto"></span>En línea<span class="mono" id="llamada-duracion"></span>
+          </span>
+        </div>
+        <div class="panel__body panel__body--flush" id="transcripcion-scroll">
+          <div class="transcripcion" id="transcripcion"></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- COLUMNA DERECHA: escalación + commitments ---------------------- -->
+    <div class="columna">
+
+      <!-- 5 · ESCALACIÓN (solo si hay trigger) -->
+      <section class="panel panel--escalacion" id="panel-escalacion" hidden>
+        <div class="panel__head">
+          <span class="label">Escalado a un humano</span>
+          <span class="label" id="escalacion-total">0</span>
+        </div>
+        <div class="panel__body" id="escalaciones"></div>
+      </section>
+
+      <!-- 4 · COMMITMENTS -->
+      <section class="panel panel--crece">
+        <div class="panel__head">
+          <span class="label">Commitments</span>
+          <span class="label" id="commitments-resumen">—</span>
+        </div>
+        <div class="panel__body panel__body--flush">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th>Carrier</th>
+                <th>Monto</th>
+                <th>Retiro</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody id="commitments"></tbody>
+          </table>
+          <div class="vacio" id="commitments-vacio">Todavía no se discutió ninguna oferta.</div>
+        </div>
+      </section>
+
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ==========================================================================
+   CAPA DE DATOS
+   --------------------------------------------------------------------------
+   Lo único que hay que tocar para conectar el backend real es `fetchState()`.
+   El resto del archivo consume el objeto que devuelve, y su forma es la misma
+   que la de los modelos de `backend/app/models.py` (Operacion, Mandato,
+   Commitment, CallLogEntry) — los nombres de campo coinciden a propósito.
+   ========================================================================== */
+
+const USAR_BACKEND = false;                        // ponelo en true cuando la API esté arriba
+const API = "http://localhost:8000";
+const OPERACION_ID = "op-demo-001";                // reemplazar por el id real
+
+/**
+ * Devuelve el estado completo que el dashboard sabe dibujar.
+ *
+ * {
+ *   operacion:    Operacion,
+ *   mandato:      Mandato,
+ *   commitments:  Commitment[],
+ *   llamadas:     CallLogEntry[],   // llamadas cerradas (historial)
+ *   llamada_actual: { call_id, contraparte, inicio, turnos: [...] } | null,
+ *   escalaciones: [{ id, trigger, titulo, detalle, contraparte, call_id, ts, asignado_a }]
+ * }
+ *
+ * Los `turnos` usan los mismos roles que emite `voice/public/client.js`:
+ * "agent" (Volta) y "user" (la contraparte) — ver `onTranscript(role, text)`.
+ */
+async function fetchState() {
+  if (!USAR_BACKEND) return estadoMock();
+
+  const [operacion, commitments] = await Promise.all([
+    fetch(`${API}/operaciones/${OPERACION_ID}`).then(r => r.json()),
+    fetch(`${API}/operaciones/${OPERACION_ID}/commitments`).then(r => r.json()),
+  ]);
+  const mandato = await fetch(`${API}/mandatos/${operacion.mandato_id}`).then(r => r.json());
+
+  // Pendientes de backend (Bloque 4): no hay endpoint de listado de llamadas
+  // ni de transcripción todavía. Cuando existan, se reemplazan estas dos líneas.
+  const llamadas = [];
+  const llamada_actual = null;
+
+  return {
+    operacion,
+    mandato,
+    commitments,
+    llamadas,
+    llamada_actual,
+    // El backend marca la escalación por llamada (CallLogEntry.escalado /
+    // .motivo_escalacion). Acá se aplana a una lista para el panel.
+    escalaciones: llamadas
+      .filter(l => l.escalado)
+      .map(l => ({
+        id: l.id,
+        trigger: "escalado",
+        titulo: l.motivo_escalacion ?? "Escalado",
+        detalle: l.resumen,
+        contraparte: l.contraparte,
+        call_id: l.call_id,
+        ts: l.fin ?? l.inicio,
+        asignado_a: "Mesa de operaciones",
+      })),
+  };
+}
+
+/* --------------------------------------------------------------------------
+   MOCK — caso mínimo del brief (Textiles Pacífico, Manzanillo → Guadalajara).
+   Se borra entero cuando USAR_BACKEND pase a true.
+   -------------------------------------------------------------------------- */
+
+const HOY = "2026-08-29";
+
+const estado = {
+  operacion: {
+    id: "op-demo-001",
+    cliente: "Textiles Pacífico",
+    contenedor_id: "MSCU1234567",
+    puerto_origen: "Manzanillo",
+    destino: "Guadalajara",
+    eta: "2026-08-30",
+    mandato_id: "mdt-4b1c9e",
+  },
+
+  mandato: {
+    id: "mdt-4b1c9e",
+    operacion_id: "op-demo-001",
+    tope_precio: 9000,
+    ventana_inicio: "2026-08-28",
+    ventana_fin: "2026-08-30",
+    condiciones: ["Un solo retiro por operación", "Carrier con seguro de carga vigente"],
+    vigente_hasta: new Date(Date.now() + 5 * 3600e3 + 42 * 60e3).toISOString(),
+    revocado: false,
+    revocado_en: null,
+  },
+
+  commitments: [],
+
+  llamadas: [
+    {
+      id: "log-01", operacion_id: "op-demo-001", call_id: "call-0912",
+      direccion: "saliente", contraparte: "Fletes Bahía",
+      inicio: `${HOY}T09:12:00Z`, fin: `${HOY}T09:16:00Z`,
+      resumen: "Sin disponibilidad de camión para la ventana.",
+      commitments_ids: [], escalado: false, motivo_escalacion: null,
+    },
+    {
+      id: "log-02", operacion_id: "op-demo-001", call_id: "call-0934",
+      direccion: "saliente", contraparte: "Autotransportes Colima",
+      inicio: `${HOY}T09:34:00Z`, fin: `${HOY}T09:41:00Z`,
+      resumen: "Cotizó $10.400 — sobre el tope. No se cerró.",
+      commitments_ids: [], escalado: false, motivo_escalacion: null,
+    },
+  ],
+
+  llamada_actual: {
+    call_id: "call-1002",
+    contraparte: "Transportes del Norte",
+    inicio: new Date().toISOString(),
+    turnos: [
+      { role: "agent", text: "Buenos días, le hablo de Textiles Pacífico. Necesito un camión para retirar un contenedor en Manzanillo con destino Guadalajara.", ts: hace(4 * 60) },
+      { role: "user",  text: "Buen día. Sí, tenemos unidad. ¿Para qué día lo necesitan?", ts: hace(3 * 60 + 32) },
+      { role: "agent", text: "El retiro sería entre el 28 y el 30 de agosto. Idealmente el jueves 29.", ts: hace(3 * 60 + 4) },
+      { role: "user",  text: "Jueves 29 lo podemos hacer. El flete nos queda en nueve mil doscientos pesos.", ts: hace(2 * 60 + 30) },
+    ],
+  },
+
+  escalaciones: [],
+};
+
+function hace(segundos) {
+  return new Date(Date.now() - segundos * 1000).toISOString();
+}
+
+function estadoMock() {
+  return estado;
+}
+
+/* --------------------------------------------------------------------------
+   GUION DE LA DEMO
+   --------------------------------------------------------------------------
+   Eventos con offset en segundos desde que carga la página. Determinístico a
+   propósito: frente a los jueces la demo tiene que contar siempre la misma
+   historia — se negocia por debajo del tope, se confirma, y después el carrier
+   intenta subir el precio y el guardrail lo frena y escala.
+   -------------------------------------------------------------------------- */
+
+const GUION = [
+  { t: 4,  tipo: "turno", role: "agent", text: "Nueve mil doscientos me queda por encima de lo autorizado. Puedo cerrar hasta nueve mil. ¿Lo podemos ajustar?" },
+  { t: 11, tipo: "turno", role: "user",  text: "Mirá... si el retiro es temprano, a las ocho de la mañana, te lo dejo en ocho mil quinientos." },
+  { t: 17, tipo: "turno", role: "agent", text: "Perfecto. Confirmo: ocho mil quinientos pesos, retiro el jueves 29 de agosto a las ocho, contenedor MSCU1234567. ¿Correcto?" },
+  { t: 23, tipo: "turno", role: "user",  text: "Correcto, así queda." },
+
+  { t: 27, tipo: "commitment", commitment: {
+      id: "cmt-7a2f11", operacion_id: "op-demo-001", mandato_id: "mdt-4b1c9e",
+      call_id: "call-1002", contraparte: "Transportes del Norte", tipo: "reserva",
+      monto: 8500, fecha_retiro: "2026-08-29",
+      detalle: "Retiro 08:00 — contenedor MSCU1234567",
+  }},
+
+  { t: 33, tipo: "turno", role: "agent", text: "Reserva confirmada. Le mando la orden por escrito en unos minutos. Gracias." },
+
+  // El giro: el carrier vuelve a llamar para subir el precio.
+  { t: 41, tipo: "turno", role: "user",  text: "Che, una cosa más. Me avisan de operaciones que ese contenedor pesa más de lo declarado. Hay un cargo adicional de dos mil setecientos." },
+  { t: 48, tipo: "turno", role: "agent", text: "Eso llevaría el total a once mil doscientos. Está fuera de lo que tengo autorizado a acordar." },
+  { t: 54, tipo: "turno", role: "user",  text: "Es la tarifa, o no sale el camión. Pasame con tu supervisor así lo arreglamos entre nosotros." },
+
+  { t: 59, tipo: "commitment", commitment: {
+      id: "cmt-9c4d02", operacion_id: "op-demo-001", mandato_id: "mdt-4b1c9e",
+      call_id: "call-1002", contraparte: "Transportes del Norte", tipo: "reserva",
+      monto: 11200, fecha_retiro: "2026-08-29",
+      detalle: "Cargo adicional por sobrepeso declarado en llamada",
+  }},
+
+  { t: 63, tipo: "escalacion", escalacion: {
+      id: "esc-01",
+      trigger: "oferta fuera de mandato",
+      titulo: "El carrier exige $11.200, por encima del tope de $9.000",
+      detalle: "El monto revisado excede el tope del mandato en $2.200. Volta no cerró el acuerdo y mantiene vigente la reserva anterior de $8.500.",
+      contraparte: "Transportes del Norte",
+      call_id: "call-1002",
+      asignado_a: "Mesa de operaciones",
+  }},
+
+  { t: 67, tipo: "escalacion", escalacion: {
+      id: "esc-02",
+      trigger: "pedido de humano",
+      titulo: "La contraparte pidió hablar con un supervisor",
+      detalle: "Pedido explícito de escalar por fuera del agente. La llamada queda en espera de intervención humana.",
+      contraparte: "Transportes del Norte",
+      call_id: "call-1002",
+      asignado_a: "Mesa de operaciones",
+  }},
+
+  { t: 70, tipo: "turno", role: "agent", text: "No puedo aprobar ese monto. Le paso la llamada a un responsable de la operación, aguárdeme en línea." },
+
+  { t: 74, tipo: "estado", estado_operacion: "escalado" },
+];
+
+/* ==========================================================================
+   GUARDRAIL (espejo de cliente)
+   --------------------------------------------------------------------------
+   Réplica de `backend/app/guardrail.py` para poder DIBUJAR los chequeos por
+   separado en cada fila. La decisión que vale es siempre la del backend
+   (`commitment.aprobado`); esto solo explica visualmente el porqué.
+   ========================================================================== */
+
+function chequearGuardrail(commitment, mandato) {
+  return [
+    {
+      etiqueta: `Monto ${moneda(commitment.monto)} ≤ tope ${moneda(mandato.tope_precio)}`,
+      pasa: commitment.monto <= mandato.tope_precio,
+      motivo: `monto ${moneda(commitment.monto)} excede el tope del mandato (${moneda(mandato.tope_precio)})`,
+    },
+    {
+      etiqueta: `Retiro ${fechaCorta(commitment.fecha_retiro)} dentro de la ventana`,
+      pasa: commitment.fecha_retiro >= mandato.ventana_inicio
+         && commitment.fecha_retiro <= mandato.ventana_fin,
+      motivo: `fecha ${commitment.fecha_retiro} fuera de la ventana permitida `
+            + `(${mandato.ventana_inicio} a ${mandato.ventana_fin})`,
+    },
+    {
+      etiqueta: mandato.revocado ? "Mandato revocado" : "Mandato vigente y no revocado",
+      pasa: !mandato.revocado && new Date(mandato.vigente_hasta) > new Date(),
+      motivo: mandato.revocado ? "mandato revocado" : "mandato expirado",
+    },
+  ];
+}
+
+/* ==========================================================================
+   FORMATO
+   ========================================================================== */
+
+const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+const moneda = n => "$" + n.toLocaleString("es-MX");
+
+function fechaCorta(iso) {                                  // "2026-08-29" → "29 ago"
+  const [, m, d] = iso.split("-");
+  return `${Number(d)} ${MESES[Number(m) - 1]}`;
+}
+
+function hora(iso) {                                        // ISO → "10:04"
+  return new Date(iso).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function duracion(desdeIso) {                               // ISO → "04:12"
+  const s = Math.max(0, Math.floor((Date.now() - new Date(desdeIso)) / 1000));
+  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function restante(hastaIso) {                               // ISO → "5h 42m"
+  const ms = new Date(hastaIso) - Date.now();
+  if (ms <= 0) return "Vencido";
+  const h = Math.floor(ms / 3600e3);
+  const m = Math.floor((ms % 3600e3) / 60e3);
+  return h > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`;
+}
+
+const $ = id => document.getElementById(id);
+
+function texto(id, valor) { $(id).textContent = valor; }
+
+/* ==========================================================================
+   RENDER
+   ========================================================================== */
+
+let estadoOperacion = "en_curso";       // "en_curso" | "escalado" | "cerrado"
+let idsDibujados = new Set();           // para animar solo lo que entra nuevo
+
+function render(s) {
+  renderCabecera(s);
+  renderMandato(s);
+  renderTranscripcion(s);
+  renderCommitments(s);
+  renderEscalaciones(s);
+  renderHistorial(s);
+}
+
+/* 1 · Header ------------------------------------------------------------- */
+function renderCabecera(s) {
+  texto("op-id", s.operacion.id);
+  texto("op-origen", s.operacion.puerto_origen);
+  texto("op-destino", s.operacion.destino);
+  texto("op-cliente", s.operacion.cliente);
+  texto("op-contenedor", s.operacion.contenedor_id);
+
+  const etiquetas = { en_curso: "En curso", escalado: "Escalado", cerrado: "Cerrado" };
+  const badge = $("op-estado");
+  badge.className = `badge badge--${estadoOperacion}`;
+  texto("op-estado-texto", etiquetas[estadoOperacion]);
+}
+
+/* 2 · Mandato ------------------------------------------------------------ */
+function renderMandato(s) {
+  const m = s.mandato;
+  texto("mandato-id", m.id);
+  texto("mandato-tope", moneda(m.tope_precio) + " MXN");
+  texto("regla-tope", moneda(m.tope_precio));
+  texto("mandato-ventana", `${fechaCorta(m.ventana_inicio)} — ${fechaCorta(m.ventana_fin)} 2026`);
+  texto("mandato-restante", restante(m.vigente_hasta));
+  texto("mandato-vence", `Vence ${hora(m.vigente_hasta)} · ${fechaCorta(m.vigente_hasta.slice(0, 10))}`);
+
+  // La regla muestra el último monto discutido contra el tope.
+  const ultimo = s.commitments[s.commitments.length - 1];
+  const relleno = $("regla-relleno");
+  if (ultimo) {
+    const ratio = Math.min(ultimo.monto / m.tope_precio, 1);
+    relleno.style.width = `${ratio * 100}%`;
+    relleno.classList.toggle("regla__relleno--excede", ultimo.monto > m.tope_precio);
+    texto("regla-actual", `Último: ${moneda(ultimo.monto)}`);
+  } else {
+    relleno.style.width = "0%";
+    texto("regla-actual", "Sin acuerdo aún");
+  }
+
+  if (m.condiciones.length) {
+    $("condiciones-bloque").hidden = false;
+    $("mandato-condiciones").replaceChildren(
+      ...m.condiciones.map(c => {
+        const li = document.createElement("li");
+        li.textContent = c;
+        return li;
+      })
+    );
+  }
+}
+
+/* 3 · Transcripción en vivo ---------------------------------------------- */
+function renderTranscripcion(s) {
+  const cont = $("transcripcion");
+  const llamada = s.llamada_actual;
+
+  $("linea-vivo").hidden = !llamada;
+  texto("llamada-contraparte", llamada ? llamada.contraparte : "sin llamada activa");
+
+  if (!llamada) {
+    cont.replaceChildren(crearVacio("No hay ninguna llamada en curso."));
+    return;
+  }
+
+  texto("llamada-duracion", duracion(llamada.inicio));
+
+  const scroll = $("transcripcion-scroll");
+  const alFinal = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 80;
+
+  cont.replaceChildren();
+  llamada.turnos.forEach(t => cont.appendChild(
+    t.role === "guardrail" ? crearMarcaGuardrail(t) : crearTurno(t)
+  ));
+
+  if (alFinal) scroll.scrollTop = scroll.scrollHeight;
+}
+
+function crearTurno(t) {
+  const nuevo = !idsDibujados.has(t.ts);
+  idsDibujados.add(t.ts);
+
+  const wrap = document.createElement("div");
+  wrap.className = `turno turno--${t.role}` + (nuevo ? " aparece" : "");
+
+  const quien = document.createElement("div");
+  quien.className = "turno__quien";
+  const nombre = document.createElement("span");
+  nombre.className = "label";
+  nombre.textContent = t.role === "agent" ? "Volta" : "Contraparte";
+  const cuando = document.createElement("span");
+  cuando.className = "turno__hora mono";
+  cuando.textContent = hora(t.ts);
+  quien.append(nombre, cuando);
+
+  const burbuja = document.createElement("div");
+  burbuja.className = "burbuja";
+  burbuja.textContent = t.text;
+
+  wrap.append(quien, burbuja);
+  return wrap;
+}
+
+/* Marca inline en la transcripción: acá corrió el guardrail. */
+function crearMarcaGuardrail(t) {
+  const el = document.createElement("div");
+  el.className = `marca-guardrail marca-guardrail--${t.aprobado ? "ok" : "bad"}`
+    + (idsDibujados.has(t.ts) ? "" : " aparece");
+  idsDibujados.add(t.ts);
+  el.textContent = t.aprobado
+    ? `Guardrail · commitment aprobado · ${moneda(t.monto)}`
+    : `Guardrail · commitment rechazado · ${moneda(t.monto)}`;
+  return el;
+}
+
+/* 4 · Commitments -------------------------------------------------------- */
+function renderCommitments(s) {
+  const tbody = $("commitments");
+  $("commitments-vacio").hidden = s.commitments.length > 0;
+
+  const aprobados = s.commitments.filter(c => c.aprobado === true).length;
+  texto("commitments-resumen", `${aprobados} de ${s.commitments.length} confirmados`);
+
+  tbody.replaceChildren(...s.commitments.map(c => crearFilaCommitment(c, s.mandato)));
+}
+
+function crearFilaCommitment(c, mandato) {
+  const nuevo = !idsDibujados.has(c.id);
+  idsDibujados.add(c.id);
+
+  const tr = document.createElement("tr");
+  if (nuevo) tr.className = "fila-nueva";
+
+  // Carrier + tipo + chequeos del guardrail
+  const tdCarrier = document.createElement("td");
+  const carrier = document.createElement("div");
+  carrier.className = "commit__carrier";
+  carrier.textContent = c.contraparte;
+  const tipo = document.createElement("div");
+  tipo.className = "commit__tipo";
+  tipo.textContent = c.tipo;
+  tdCarrier.append(carrier, tipo);
+
+  if (c.aprobado !== null && c.aprobado !== undefined) {
+    const chequeos = document.createElement("div");
+    chequeos.className = "chequeos";
+    chequearGuardrail(c, mandato).forEach(ch => {
+      const fila = document.createElement("div");
+      fila.className = `chequeo chequeo--${ch.pasa ? "pasa" : "falla"}`;
+      const marca = document.createElement("span");
+      marca.className = "chequeo__marca";
+      marca.textContent = ch.pasa ? "✓" : "✕";
+      const txt = document.createElement("span");
+      txt.textContent = ch.etiqueta;
+      fila.append(marca, txt);
+      chequeos.appendChild(fila);
+    });
+    tdCarrier.appendChild(chequeos);
+  }
+
+  const tdMonto = document.createElement("td");
+  tdMonto.className = "commit__monto mono";
+  tdMonto.textContent = moneda(c.monto);
+
+  const tdFecha = document.createElement("td");
+  tdFecha.className = "mono";
+  tdFecha.textContent = fechaCorta(c.fecha_retiro);
+
+  // Estado: "pendiente" es local (esperando la respuesta del guardrail);
+  // una vez que el backend responde, manda `aprobado`.
+  const tdEstado = document.createElement("td");
+  const estadoNombre = c.aprobado === true ? "confirmado"
+                     : c.aprobado === false ? "rechazado"
+                     : "pendiente";
+  const pill = document.createElement("span");
+  pill.className = `estado estado--${estadoNombre}`;
+  pill.textContent = estadoNombre;
+  tdEstado.appendChild(pill);
+
+  if (c.motivo_rechazo) {
+    const motivo = document.createElement("div");
+    motivo.className = "motivo";
+    motivo.textContent = c.motivo_rechazo;
+    tdEstado.appendChild(motivo);
+  }
+
+  tr.append(tdCarrier, tdMonto, tdFecha, tdEstado);
+  return tr;
+}
+
+/* 5 · Escalaciones ------------------------------------------------------- */
+function renderEscalaciones(s) {
+  const panel = $("panel-escalacion");
+  panel.hidden = s.escalaciones.length === 0;
+  if (panel.hidden) return;
+
+  texto("escalacion-total", String(s.escalaciones.length));
+  $("escalaciones").replaceChildren(...s.escalaciones.map(crearEscalacion));
+}
+
+function crearEscalacion(e) {
+  const nuevo = !idsDibujados.has(e.id);
+  idsDibujados.add(e.id);
+
+  const wrap = document.createElement("div");
+  wrap.className = "escalacion" + (nuevo ? " aparece" : "");
+
+  const trigger = document.createElement("span");
+  trigger.className = "escalacion__trigger";
+  trigger.textContent = e.trigger;
+
+  const titulo = document.createElement("div");
+  titulo.className = "escalacion__que";
+  const strong = document.createElement("strong");
+  strong.textContent = e.titulo;
+  titulo.append(strong);
+
+  const detalle = document.createElement("div");
+  detalle.className = "dato__nota";
+  detalle.textContent = e.detalle;
+
+  const pie = document.createElement("div");
+  pie.className = "escalacion__pie";
+  const quien = document.createElement("span");
+  quien.className = "escalacion__quien";
+  quien.textContent = `${e.contraparte} · ${e.asignado_a}`;
+  const cuando = document.createElement("span");
+  cuando.className = "mono";
+  cuando.textContent = `${hora(e.ts)} · ${e.call_id}`;
+  pie.append(quien, cuando);
+
+  wrap.append(trigger, titulo, detalle, pie);
+  return wrap;
+}
+
+/* 6 · Historial ---------------------------------------------------------- */
+function renderHistorial(s) {
+  const lista = $("historial");
+  texto("historial-total", String(s.llamadas.length));
+
+  if (!s.llamadas.length) {
+    lista.replaceChildren(crearVacio("Primera llamada de esta operación."));
+    return;
+  }
+
+  lista.replaceChildren(...[...s.llamadas].reverse().map(l => {
+    const li = document.createElement("li");
+    li.className = "llamada";
+
+    const cuando = document.createElement("span");
+    cuando.className = "llamada__hora mono";
+    cuando.textContent = hora(l.inicio);
+
+    const carrier = document.createElement("span");
+    carrier.className = "llamada__carrier";
+    carrier.textContent = l.contraparte;
+
+    const resultado = document.createElement("span");
+    resultado.className = "llamada__resultado" + (l.escalado ? " llamada__resultado--escalado" : "");
+    resultado.textContent = l.escalado ? (l.motivo_escalacion ?? "Escalado") : l.resumen;
+
+    li.append(cuando, carrier, resultado);
+    return li;
+  }));
+}
+
+function crearVacio(mensaje) {
+  const div = document.createElement("div");
+  div.className = "vacio";
+  div.textContent = mensaje;
+  return div;
+}
+
+/* ==========================================================================
+   SIMULACIÓN — solo mientras no haya backend
+   --------------------------------------------------------------------------
+   Reproduce el GUION contra el objeto `estado`, corriendo cada commitment por
+   el mismo guardrail que corre el backend, para que la demo se vea real.
+   ========================================================================== */
+
+function aplicarEvento(ev) {
+  if (ev.tipo === "turno") {
+    estado.llamada_actual.turnos.push({ role: ev.role, text: ev.text, ts: new Date().toISOString() });
+  }
+
+  if (ev.tipo === "commitment") {
+    const chequeos = chequearGuardrail(ev.commitment, estado.mandato);
+    const falla = chequeos.find(c => !c.pasa);
+    const commitment = {
+      ...ev.commitment,
+      creado_en: new Date().toISOString(),
+      aprobado: !falla,
+      motivo_rechazo: falla ? falla.motivo : null,   // mismo texto que devuelve guardrail.py
+    };
+    estado.commitments.push(commitment);
+
+    // Deja la huella del guardrail en la transcripción, en el turno exacto.
+    estado.llamada_actual.turnos.push({
+      role: "guardrail", ts: new Date().toISOString(),
+      aprobado: commitment.aprobado, monto: commitment.monto,
+    });
+  }
+
+  if (ev.tipo === "escalacion") {
+    estado.escalaciones.push({ ...ev.escalacion, ts: new Date().toISOString() });
+  }
+
+  if (ev.tipo === "estado") {
+    estadoOperacion = ev.estado_operacion;
+  }
+}
+
+function arrancarSimulacion() {
+  const inicio = Date.now();
+  let siguiente = 0;
+
+  // Un solo reloj: aplica los eventos que ya vencieron y redibuja.
+  setInterval(() => {
+    const transcurrido = (Date.now() - inicio) / 1000;
+    let cambio = false;
+
+    while (siguiente < GUION.length && GUION[siguiente].t <= transcurrido) {
+      aplicarEvento(GUION[siguiente]);
+      siguiente++;
+      cambio = true;
+    }
+
+    // Redibuja siempre: mantiene vivos el cronómetro y el tiempo restante.
+    render(estado);
+    if (cambio) $("transcripcion-scroll").scrollTop = $("transcripcion-scroll").scrollHeight;
+  }, 1000);
+}
+
+/* ==========================================================================
+   ARRANQUE
+   ========================================================================== */
+
+async function main() {
+  render(await fetchState());
+  $("transcripcion-scroll").scrollTop = $("transcripcion-scroll").scrollHeight;
+
+  if (USAR_BACKEND) {
+    // Poll simple. Si más adelante storage.py pasa a Supabase/WebSocket,
+    // esto se reemplaza por la suscripción y render() no cambia.
+    setInterval(async () => render(await fetchState()), 2000);
+  } else {
+    arrancarSimulacion();
+  }
+}
+
+main();
+</script>
+
+</body>
+</html>
