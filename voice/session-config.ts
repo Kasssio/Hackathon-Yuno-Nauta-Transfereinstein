@@ -10,7 +10,11 @@ Si ya cerraste con un transportista y después otro te ofrece algo mejor dentro 
 llamá a cancel_commitment (explicando el motivo), avisale al primero en la llamada que
 corresponda que ya no sigue en pie, y recién ahí cerrá con record_commitment el nuevo trato.
 Nunca dejes dos reservas vigentes al mismo tiempo para la misma operación.
-Antes de arrancar la ronda de llamadas salientes, usá find_carriers para saber a quién llamar — te da la lista de transportistas que sirven el puerto de esta operación, ordenada por cercanía, con cuánto suelen negociar y su puntualidad. Priorizá negociar más con los que tienen disposicion_a_negociar alta, y tené en cuenta la puntualidad al elegir entre ofertas parecidas — un precio un poco más alto con mejor puntualidad puede ser la mejor opción.`,
+Antes de arrancar la ronda de llamadas salientes, usá find_carriers para saber a quién llamar — te da la lista de transportistas que sirven el puerto de esta operación, ordenada por cercanía, con cuánto suelen negociar y su puntualidad. Priorizá negociar más con los que tienen disposicion_a_negociar alta, y tené en cuenta la puntualidad al elegir entre ofertas parecidas — un precio un poco más alto con mejor puntualidad puede ser la mejor opción.
+
+Escalás a un humano con escalate_to_human cuando: te piden algo fuera de tu mandato y el
+interlocutor insiste, te piden hablar con una persona, detectás una contradicción que no
+podés resolver, o te presionan con urgencia para saltarte una regla. Escalar no es fallar.`,
 // TODO (Sofía): esto es un piso mínimo para que la tool se use bien — el resto del
 // prompt de negociación (cómo pedir precio, cómo comparar, tono ante objeciones) es tuyo.
 
@@ -91,6 +95,23 @@ Antes de arrancar la ronda de llamadas salientes, usá find_carriers para saber 
         required: ["tipo", "contraparte", "monto", "fecha_retiro"],
       },
     },
+    {
+      type: "function",
+      name: "escalate_to_human",
+      description:
+        "Pasa la llamada en curso a un humano del equipo, sin cortar. Usala cuando el pedido " +
+        "queda fuera de tu mandato y el interlocutor insiste, cuando te piden hablar con una " +
+        "persona, o cuando detectás una contradicción que no podés resolver.",
+      parameters: {
+        type: "object",
+        properties: {
+          motivo: {
+            type: "string",
+            description: "Por qué escalás, en una frase corta. Queda en el trail auditable.",
+          },
+        },
+        required: ["motivo"],
+      },
+    },
   ],
 };
-
