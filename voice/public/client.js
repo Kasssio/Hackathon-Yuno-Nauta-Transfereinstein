@@ -14,10 +14,46 @@ const statusEl = () => document.getElementById("status");
 const setStatus = (s) => (statusEl().textContent = s);
 const btn = (id) => document.getElementById(id);
 
-// ===== PUNTO DE INTEGRACIÓN: transcripción =====
-export function onTranscript(role, text) {}
+// ===== Puente con el dashboard (Modo Resolución) =====
+// WS liviano, sin audio: mientras Twilio está suspendido, esta pestaña ES
+// la llamada real (WebRTC directo contra OpenAI) — este canal es lo único
+// que le avisa a server.ts (y de ahí, vía /call/status, al dashboard) la
+// transcripción y las escalaciones, y por donde llega la orden de
+// "devolver a Volta" cuando el operador la manda desde el botón del
+// dashboard sin venir a esta pestaña.
+let panelWs = null;
+function abrirPanel() {
+  try {
+    panelWs = new WebSocket(`ws://${location.host}/panel`);
+    panelWs.addEventListener("message", (e) => {
+      const data = JSON.parse(e.data);
+      if (data.type === "volver_a_volta" && escalado) volverAVolta();
+      if (data.type === "operador_atiende") setStatus("ESCALADO — operador conectado desde el dashboard");
+    });
+    panelWs.addEventListener("error", () => {}); // sin dashboard escuchando, no pasa nada
+  } catch (e) { console.error("[panel] no se pudo conectar", e); }
+}
+function enviarAlPanel(o) {
+  if (panelWs?.readyState === WebSocket.OPEN) panelWs.send(JSON.stringify(o));
+}
 
-const BACKEND_URL = "http://localhost:8000";
+// ===== PUNTO DE INTEGRACIÓN: transcripción =====
+export function onTranscript(role, text) {
+  if (role === "resumen") enviarAlPanel({ type: "resumen", texto: text });
+  else enviarAlPanel({ type: "transcript", role, text });
+  // Evento de DOM aparte (no acoplado a esta función) para que index.html
+  // pueda pintar la transcripción en pantalla sin tocar la lógica de acá.
+  window.dispatchEvent(new CustomEvent("volta-transcript", { detail: { role, text } }));
+}
+
+// Antes era "http://localhost:8000" fijo — rompía apenas esta página se
+// abría desde otra computadora (localhost ahí apunta a ESA máquina, no a la
+// que corre el backend). Se deriva del host con el que se cargó esta
+// página: si la abriste como http://192.168.1.23:3000, pega contra
+// http://192.168.1.23:8000. Asume que el backend corre en la MISMA máquina
+// que este server de voz (mismo supuesto de siempre, solo que ahora
+// funciona también en red local, no solo en localhost).
+const BACKEND_URL = `http://${location.hostname}:8000`;
 
 // La operación activa se resuelve una sola vez, al conectar — así el
 // modelo nunca tiene que saber ids. Para la demo alcanza con la
@@ -412,6 +448,7 @@ function entrarEnEscalacion() {
   setStatus("ESCALADO — Volta escucha, hablá vos");
   btn("escalar").disabled = true;
   btn("devolver").disabled = false;
+  enviarAlPanel({ type: "escalacion_inicio", motivo: motivoEscalacion });
   console.log("[escalacion] inicio. motivo:", motivoEscalacion);
 }
 
@@ -430,6 +467,7 @@ function volverAVolta() {
   setStatus("en llamada");
   btn("escalar").disabled = false;
   btn("devolver").disabled = true;
+  enviarAlPanel({ type: "escalacion_fin" });
   console.log("[escalacion] fin, vuelve Volta");
 }
 
@@ -446,7 +484,12 @@ function escalarManual() {
 }
 
 function mostrarResumen(texto) {
-  btn("resumen").textContent = texto;
+  // El <pre id="resumen"> es de la versión vieja de esta página — la actual
+  // (voice/public/index.html) pinta el resumen como una burbuja más en la
+  // transcripción, vía onTranscript. Se deja este guard para no romper si
+  // alguien corre una versión de index.html que todavía tenga ese elemento.
+  const pre = btn("resumen");
+  if (pre) pre.textContent = texto;
   console.log("[resumen para el humano]\n" + texto);
   onTranscript("resumen", texto);
 }
@@ -517,6 +560,7 @@ async function connect() {
   candidatoActual = null;
   candidatosRestantes = null;
   cotizacionesRegistradas.length = 0;
+  abrirPanel();
   try {
     const sesion = await (await fetch("/session", { method: "POST" })).json();
     const key = sesion.value;
@@ -571,6 +615,8 @@ function hangup() {
   if (vigilanciaMandato) { clearInterval(vigilanciaMandato); vigilanciaMandato = null; }
   if (latencyRAF) cancelAnimationFrame(latencyRAF);
   latencyRAF = null;
+  panelWs?.close();
+  panelWs = null;
   pc?.close();
   micStream?.getTracks().forEach((t) => t.stop());
   pc = dc = analyser = null;

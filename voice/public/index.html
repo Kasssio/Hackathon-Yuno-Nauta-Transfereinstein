@@ -1,12 +1,315 @@
 <!doctype html>
+<html lang="es">
+<head>
 <meta charset="utf-8">
-<title>Volta — spike realtime</title>
-<button id="connect">Atender llamada</button>
-<button id="entrante">Atender entrante</button>
-<button id="interrupt">Interrumpir</button>
-<button id="hangup">Colgar</button>
-<button id="escalar" disabled>Escalar a humano</button>
-<button id="devolver" disabled>Devolver a Volta</button>
-<p>estado: <span id="status">sonando — Volta te está llamando</span></p>
-<pre id="resumen" style="white-space:pre-wrap;border:1px solid #ccc;padding:8px;min-height:3em"></pre>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volta — Consola de voz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* ==========================================================================
+   Mismo lenguaje visual que dashboard/index.html (tema oscuro neumórfico) —
+   se copian los tokens tal cual para que las dos pantallas se sientan como
+   una sola cosa cuando el operador pasa de una a la otra en la demo.
+   ========================================================================== */
+:root {
+  --bg:         #1a1e23;
+  --surface:    #1f252b;
+  --surface-2:  #242b32;
+  --well:       #171b20;
+  --borde:      rgba(255,255,255,.055);
+  --borde-alto: rgba(255,255,255,.09);
+
+  --ink:        #e9eef3;
+  --ink-2:      #9dabb6;
+  --ink-3:      #6c7985;
+
+  --accent:     #2dd4bf;
+  --accent-dim: rgba(45,212,191,.13);
+  --good:       #34d399;
+  --good-dim:   rgba(52,211,153,.13);
+  --warn:       #fb923c;
+  --warn-dim:   rgba(251,146,60,.13);
+  --bad:        #f87171;
+  --bad-dim:    rgba(248,113,113,.13);
+
+  --nm:        -5px -5px 13px rgba(255,255,255,.021),  6px 6px 16px rgba(0,0,0,.50);
+  --nm-suave:  -3px -3px  8px rgba(255,255,255,.017),  4px 4px 11px rgba(0,0,0,.40);
+  --nm-hueco:  inset -2px -2px 6px rgba(255,255,255,.022), inset 3px 3px 8px rgba(0,0,0,.46);
+
+  --r:    10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --gap:  14px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0; min-height: 100vh;
+  background: var(--bg); color: var(--ink);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px; line-height: 1.5; letter-spacing: -.011em;
+  -webkit-font-smoothing: antialiased;
+  display: flex; flex-direction: column;
+}
+
+.mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.label { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #333d46; border-radius: 100px; border: 2px solid transparent; background-clip: content-box; }
+* { scrollbar-width: thin; scrollbar-color: #333d46 transparent; }
+
+/* -- Header, igual que el dashboard --------------------------------------- */
+.header { display: flex; align-items: center; gap: 12px; padding: 0 18px; height: 62px; flex: none; border-bottom: 1px solid var(--borde); }
+.logo {
+  width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
+  background: linear-gradient(145deg, #35e6d0, #1aa898);
+  color: #06231f; font-weight: 900; font-size: 17px; letter-spacing: -.04em;
+  box-shadow: var(--nm-suave), inset 0 1px 0 rgba(255,255,255,.28);
+}
+.marca__n { font-size: 17px; font-weight: 800; letter-spacing: -.03em; line-height: 1.15; }
+.marca__s { font-size: 11.5px; color: var(--ink-3); line-height: 1.25; }
+.header__der { margin-left: auto; }
+.chip {
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 100px;
+  background: var(--surface); border: 1px solid var(--borde); box-shadow: var(--nm-suave);
+  font-size: 12px; font-weight: 700; color: var(--warn);
+}
+.chip svg { flex: none; }
+
+/* -- Layout ---------------------------------------------------------------- */
+.cuerpo {
+  flex: 1; display: grid; grid-template-columns: 340px minmax(0,1fr);
+  gap: var(--gap); padding: var(--gap); min-height: 0;
+}
+@media (max-width: 820px) { .cuerpo { grid-template-columns: 1fr; } }
+
+.panel {
+  background: var(--surface); border: 1px solid var(--borde);
+  border-radius: var(--r-lg); box-shadow: var(--nm);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.panel__head { display: flex; align-items: center; gap: 8px; padding: 15px 17px 12px; flex: none; }
+.panel__head svg { color: var(--ink-3); }
+.panel__body { padding: 0 17px 17px; overflow-y: auto; min-height: 0; flex: 1; }
+
+/* -- Tarjeta de llamada ------------------------------------------------------ */
+.llamada { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 8px 4px 4px; }
+
+.orbe {
+  width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--well); box-shadow: var(--nm-hueco);
+  color: var(--ink-3); position: relative; transition: color .25s;
+}
+.orbe svg { width: 34px; height: 34px; }
+.orbe::after {
+  content: ""; position: absolute; inset: -6px; border-radius: 50%;
+  border: 2px solid transparent; transition: border-color .25s;
+}
+.orbe--live { color: var(--good); }
+.orbe--live::after { border-color: rgba(52,211,153,.35); animation: latido 1.6s ease-in-out infinite; }
+.orbe--esc { color: var(--warn); }
+.orbe--esc::after { border-color: rgba(251,146,60,.4); animation: latido 1.1s ease-in-out infinite; }
+@keyframes latido { 0%,100% { transform: scale(1); opacity: .9 } 50% { transform: scale(1.08); opacity: .4 } }
+
+.estado-pill {
+  display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 100px;
+  background: var(--well); box-shadow: var(--nm-hueco); font-size: 12.5px; font-weight: 700;
+  color: var(--ink-2); text-align: center; max-width: 100%;
+}
+.estado-pill__p { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+
+.controles { width: 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.fila-btn { display: flex; gap: 8px; }
+.fila-btn > * { flex: 1; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 7px; justify-content: center;
+  font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: -.012em;
+  padding: 10px 14px; border-radius: var(--r); cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--borde); color: var(--ink);
+  box-shadow: var(--nm-suave); transition: box-shadow .18s, background .18s, transform .12s;
+}
+.btn:hover { background: #29323a; border-color: var(--borde-alto); }
+.btn:active { box-shadow: var(--nm-hueco); transform: translateY(1px); }
+.btn:disabled { opacity: .45; cursor: default; box-shadow: none; }
+.btn:disabled:hover { background: var(--surface-2); }
+
+.btn--primario {
+  background: linear-gradient(145deg, #35e6d0, #16a396); color: #06231f;
+  border-color: transparent; font-weight: 700;
+  box-shadow: var(--nm-suave), inset 0 1px 0 rgba(255,255,255,.25);
+}
+.btn--primario:hover { filter: brightness(1.07); background: linear-gradient(145deg, #35e6d0, #16a396); }
+
+.btn--peligro {
+  background: linear-gradient(145deg, #f4635c, #c73833); color: #fff; border-color: transparent;
+  box-shadow: var(--nm-suave), 0 0 14px rgba(248,113,113,.22);
+}
+.btn--peligro:hover { filter: brightness(1.08); background: linear-gradient(145deg, #f4635c, #c73833); color: #fff; }
+
+.btn--warn {
+  background: rgba(251,146,60,.14); color: var(--warn); border-color: rgba(251,146,60,.35);
+}
+.btn--warn:hover { background: rgba(251,146,60,.2); }
+
+.separador { height: 1px; background: var(--borde); margin: 4px 0; }
+
+/* -- Panel de teléfono real (Twilio) -- deshabilitado mientras la cuenta
+   está suspendida; se deja visible para no esconder que existe, pero no
+   invita a usarlo. */
+.aviso-twilio {
+  display: flex; gap: 10px; padding: 12px 13px; border-radius: var(--r);
+  background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.3);
+  font-size: 11.5px; color: var(--ink-2); line-height: 1.5;
+}
+.aviso-twilio svg { flex: none; color: var(--bad); margin-top: 1px; }
+
+/* -- Transcripción ----------------------------------------------------------- */
+.cuenta {
+  display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 7px;
+  border-radius: 100px; background: var(--well); box-shadow: var(--nm-hueco);
+  font-size: 11px; font-weight: 700; color: var(--ink-2); margin-left: auto;
+}
+.turnos { display: flex; flex-direction: column; gap: 10px; }
+.turno { display: flex; flex-direction: column; gap: 3px; max-width: 78%; animation: entra .22s cubic-bezier(.25,.85,.3,1); }
+@keyframes entra { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+.turno--agent { align-self: flex-start; }
+.turno--user { align-self: flex-end; align-items: flex-end; }
+.turno__quien { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding: 0 3px; }
+.turno__globo { padding: 10px 13px; border-radius: var(--r); font-size: 13px; line-height: 1.5; }
+.turno--agent .turno__globo { background: var(--surface-2); border: 1px solid var(--borde); border-top-left-radius: 3px; }
+.turno--user .turno__globo { background: var(--accent-dim); border: 1px solid rgba(45,212,191,.3); color: var(--ink); border-top-right-radius: 3px; }
+.turno--resumen .turno__globo { background: var(--warn-dim); border: 1px solid rgba(251,146,60,.35); color: var(--ink); white-space: pre-wrap; }
+.turno--resumen { align-self: stretch; max-width: 100%; }
+
+.vacio {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; color: var(--ink-3); text-align: center; padding: 40px 20px;
+}
+.vacio__i { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; background: var(--well); box-shadow: var(--nm-hueco); }
+.vacio__t { font-size: 14px; font-weight: 600; color: var(--ink-2); }
+.vacio__d { font-size: 12.5px; max-width: 40ch; line-height: 1.6; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">V</div>
+  <div>
+    <div class="marca__n">Volta</div>
+    <div class="marca__s">Consola de voz — llamada real por navegador</div>
+  </div>
+  <div class="header__der">
+    <div class="chip" title="La cuenta de Twilio está suspendida: esta pestaña es la llamada real, no un mock.">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      Twilio suspendido — corre por WebRTC
+    </div>
+  </div>
+</div>
+
+<div class="cuerpo">
+  <div class="panel">
+    <div class="panel__body" style="padding-top:15px">
+      <div class="llamada">
+        <div class="orbe" id="orbe">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>
+        </div>
+        <div class="estado-pill" id="estado-pill"><span class="estado-pill__p"></span><span id="status">sonando — Volta te está llamando</span></div>
+
+        <div class="controles">
+          <button class="btn btn--primario" id="connect">Atender llamada</button>
+          <button class="btn" id="entrante">Atender entrante</button>
+          <div class="fila-btn">
+            <button class="btn" id="interrupt">Interrumpir</button>
+            <button class="btn btn--peligro" id="hangup">Colgar</button>
+          </div>
+          <div class="separador"></div>
+          <div class="fila-btn">
+            <button class="btn btn--warn" id="escalar" disabled>Escalar a humano</button>
+            <button class="btn" id="devolver" disabled>Devolver a Volta</button>
+          </div>
+        </div>
+
+        <div class="aviso-twilio">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+          <div>La llamada real por teléfono (Twilio) no está disponible ahora mismo — la cuenta está suspendida. Esta pestaña es el fallback: Volta habla en vivo por acá, y el botón "Atender llamada" del dashboard te trae a esta pestaña cuando escala.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel__head">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.4 8.4 0 0 1 8.4-9 8.4 8.4 0 0 1 8.6 9z"/></svg>
+      <span class="label">Transcripción en vivo</span>
+      <span class="cuenta" id="cuenta-turnos">0</span>
+    </div>
+    <div class="panel__body" id="cuerpo-transcripcion">
+      <div class="vacio">
+        <div class="vacio__i">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.4 8.4 0 0 1 8.4-9 8.4 8.4 0 0 1 8.6 9z"/></svg>
+        </div>
+        <div class="vacio__t">Todavía no arrancó la llamada</div>
+        <div class="vacio__d">Apretá "Atender llamada" — no hables primero, Volta abre la conversación apenas se conecta.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Pinta la transcripción y el estado de la orbe SIN tocar client.js: se
+// engancha al evento "volta-transcript" que emite onTranscript(), y a un
+// MutationObserver sobre #status (que client.js ya actualiza con setStatus)
+// para no duplicar ni un byte de la lógica de la llamada acá.
+(function () {
+  const cont = document.getElementById("cuerpo-transcripcion");
+  const cuenta = document.getElementById("cuenta-turnos");
+  const orbe = document.getElementById("orbe");
+  const statusEl = document.getElementById("status");
+  let turnos = 0;
+  let vacio = true;
+
+  function burbuja(role, text) {
+    if (vacio) { cont.replaceChildren(); vacio = false; }
+    const cls = role === "resumen" ? "turno turno--resumen" : role === "agent" ? "turno turno--agent" : "turno turno--user";
+    const t = document.createElement("div");
+    t.className = cls;
+    if (role !== "resumen") {
+      const q = document.createElement("div");
+      q.className = "turno__quien";
+      q.textContent = role === "agent" ? "Volta" : "Contraparte";
+      t.appendChild(q);
+    }
+    const g = document.createElement("div");
+    g.className = "turno__globo";
+    g.textContent = role === "resumen" ? "Resumen para el operador: " + text : text;
+    t.appendChild(g);
+    cont.appendChild(t);
+    cont.scrollTop = cont.scrollHeight;
+    turnos++;
+    cuenta.textContent = String(turnos);
+  }
+
+  window.addEventListener("volta-transcript", (e) => burbuja(e.detail.role, e.detail.text));
+
+  function actualizarOrbe() {
+    const s = (statusEl.textContent || "").toLowerCase();
+    orbe.classList.remove("orbe--live", "orbe--esc");
+    if (s.includes("escalado")) orbe.classList.add("orbe--esc");
+    else if (s.includes("en llamada") || s.includes("atendiendo") || s.includes("cortando")) orbe.classList.add("orbe--live");
+  }
+  new MutationObserver(actualizarOrbe).observe(statusEl, { childList: true, characterData: true, subtree: true });
+  actualizarOrbe();
+})();
+</script>
 <script type="module" src="client.js"></script>
+</body>
+</html>

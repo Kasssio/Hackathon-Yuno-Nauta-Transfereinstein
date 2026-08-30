@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import path from "node:path";
-import WebSocket from "ws";
+import WebSocket, { WebSocketServer } from "ws";
 import { sessionConfig } from "./session-config.js";
 import { crearManejadorDeTools } from "./tools.js";
 
@@ -147,7 +147,20 @@ async function sumarAVolta(sala: string, intento = 1) {
 
 // Suma al operador humano a la sala en curso (escalacion).
 app.post("/call/operator", async (_req, res) => {
-  if (!salaActual) return res.status(409).json({ error: "no hay llamada en curso" });
+  if (!salaActual) {
+    // Sin llamada SIP/Twilio en curso: si hay una llamada de navegador viva
+    // (fallback mientras la cuenta de Twilio está suspendida — ver más
+    // abajo, "PUENTE CON EL NAVEGADOR"), "atender" no suma un teléfono real
+    // a una conferencia, avisa a esa pestaña que el operador está. Mismos
+    // endpoints para las dos vías: el dashboard no necesita saber cuál está
+    // corriendo.
+    if (panelNavegador) {
+      escalacion.atendida = true;
+      panelNavegador.send(JSON.stringify({ type: "operador_atiende" }));
+      return res.json({ ok: true, via: "navegador" });
+    }
+    return res.status(409).json({ error: "no hay llamada en curso" });
+  }
   const r = await twilioPost(`/Conferences/${encodeURIComponent(salaActual)}/Participants.json`, {
     To: process.env.OPERATOR_PHONE!,
     From: process.env.TWILIO_FROM_NUMBER!,
@@ -309,7 +322,18 @@ let llamadaViva: {
 // El operador termino de hablar: Volta vuelve y registra lo acordado con
 // todo lo que escucho durante el tramo humano-humano.
 app.post("/call/return", (_req, res) => {
-  if (!llamadaViva) return res.status(409).json({ error: "no hay llamada en curso" });
+  if (!llamadaViva) {
+    // Misma idea que en /call/operator: sin llamada SIP viva, si hay una
+    // llamada de navegador conectada le pedimos a ESA pestaña que vuelva a
+    // hablar Volta (ahí vive el WebRTC de verdad, acá solo se avisa).
+    if (panelNavegador) {
+      panelNavegador.send(JSON.stringify({ type: "volver_a_volta" }));
+      escalacion.activa = false;
+      console.log("[escalacion] vuelve Volta (navegador)");
+      return res.json({ ok: true, via: "navegador" });
+    }
+    return res.status(409).json({ error: "no hay llamada en curso" });
+  }
   llamadaViva.despertar();
   llamadaViva.enviar({
     type: "response.create",
@@ -323,6 +347,48 @@ app.post("/call/return", (_req, res) => {
   escalacion.activa = false;
   console.log("[escalacion] vuelve Volta");
   res.json({ ok: true });
+});
+
+/* ==========================================================================
+   PUENTE CON EL NAVEGADOR — fallback mientras Twilio está suspendido
+   --------------------------------------------------------------------------
+   public/index.html (WebRTC directo contra OpenAI, sin SIP ni Twilio) abre
+   este WebSocket mientras dura su llamada. No lleva audio — es el único
+   canal de control hacia esa pestaña: le avisa a este server la
+   transcripción y las escalaciones en vivo (que se vuelcan en las MISMAS
+   variables `escalacion`/`transcripcion` de arriba, así /call/status sirve
+   para las dos vías sin que el dashboard tenga que saber cuál está
+   corriendo), y recibe la orden de "devolver a Volta" que el operador puede
+   mandar desde el botón del dashboard sin venir a esta pestaña.
+   ========================================================================== */
+let panelNavegador: WebSocket | null = null;
+const wssPanel = new WebSocketServer({ noServer: true });
+
+wssPanel.on("connection", (ws) => {
+  panelNavegador = ws;
+  // Llamada nueva: se limpia el rastro de la anterior.
+  transcripcion = [];
+  escalacion = { activa: false, motivo: "", resumen: "", ts: 0, atendida: false };
+  console.log("[panel] navegador conectado");
+
+  ws.on("message", (raw) => {
+    let data: any;
+    try { data = JSON.parse(raw.toString()); } catch { return; }
+    if (data.type === "transcript" && data.text?.trim()) {
+      transcripcion.push({ role: data.role, text: data.text, ts: Date.now() });
+    } else if (data.type === "resumen") {
+      escalacion.resumen = data.texto || "";
+    } else if (data.type === "escalacion_inicio") {
+      escalacion = { activa: true, motivo: data.motivo || "", resumen: "", ts: Date.now(), atendida: false };
+    } else if (data.type === "escalacion_fin") {
+      escalacion.activa = false;
+    }
+  });
+
+  ws.on("close", () => {
+    console.log("[panel] navegador desconectado");
+    if (panelNavegador === ws) panelNavegador = null;
+  });
 });
 
 // El WebSocket no lleva audio: es el canal de control de la llamada.
@@ -664,4 +730,15 @@ CONTEXTO DE ESTA LLAMADA — ES ENTRANTE, TE ESTAN LLAMANDO A VOS
 process.on("unhandledRejection", (e) => console.error("[unhandled]", e));
 process.on("uncaughtException", (e) => console.error("[uncaught]", e));
 
-app.listen(3000, () => console.log("http://localhost:3000"));
+const httpServer = app.listen(3000, () => console.log("http://localhost:3000"));
+
+// El WebSocket del panel (ver "PUENTE CON EL NAVEGADOR" más arriba) se
+// cuelga del mismo server HTTP, en su propio path, para no interferir con
+// nada de lo que ya corre en el puerto 3000.
+httpServer.on("upgrade", (req, socket, head) => {
+  if (req.url === "/panel") {
+    wssPanel.handleUpgrade(req, socket, head, (ws) => wssPanel.emit("connection", ws, req));
+  } else {
+    socket.destroy();
+  }
+});
