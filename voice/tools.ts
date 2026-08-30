@@ -6,7 +6,7 @@
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
-export function crearManejadorDeTools(callId: string) {
+export function crearManejadorDeTools(callId: string, alEscalar?: (motivo: string) => void) {
   let operacionActual: any = null;
   let candidatoActual: any = null;
   let candidatosRestantes: number | null = null;
@@ -155,6 +155,7 @@ export function crearManejadorDeTools(callId: string) {
 
     if (name === "escalate_to_human") {
       console.log("[escalacion]", args.motivo);
+      alEscalar?.(args.motivo || "");
       return {
         ok: true,
         instruccion:

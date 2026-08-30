@@ -820,19 +820,126 @@ async function fetchState() {
 }
 
 async function crearMandato(d) {
-  if (!USAR_BACKEND) return altaMandatoLocal(d);
+  // La vista corre en modo local (USAR_BACKEND=false, faltan GET /mandatos
+  // y GET /llamadas), pero el mandato se escribe igual en el backend: es de
+  // donde Volta lee su tope y su ventana cuando atiende la llamada real.
+  if (!USAR_BACKEND) {
+    const m = altaMandatoLocal(d);
+    escribirMandatoEnBackend(d, m);
+    return m;
+  }
   const op = await fetch(`${API}/operaciones`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ cliente: RUTA.cliente, contenedor_id: d.contenedor,
       puerto_origen: RUTA.origen, destino: RUTA.destino }),
   }).then(r => r.json());
-  return fetch(`${API}/mandatos`, {
+  const mandato = await fetch(`${API}/mandatos`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ operacion_id: op.id, tope_precio: d.tope,
       ventana_inicio: d.dia, ventana_fin: d.dia,
       condiciones: [`Franja horaria ${d.desde}–${d.hasta}`],
       vigente_hasta: new Date(Date.now() + 12 * 3600e3).toISOString() }),
   }).then(r => r.json());
+  dispararRondaDeLlamadas(op, d);
+  return mandato;
+}
+
+// Al confirmar el mandato arranca la ronda: el backend rankea los
+// transportistas del puerto, se cotizan dos en simulado y al mejor se
+// lo llama por telefono de verdad (Twilio -> SIP -> Volta).
+const VOZ = "http://localhost:3000";
+
+// El mandato se escribe en el backend aunque la vista corra local: es de
+// donde Volta lee su tope y su ventana cuando atiende la llamada real.
+async function escribirMandatoEnBackend(d, m) {
+  try {
+    const op = await fetch(`${API}/operaciones`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cliente: RUTA.cliente, contenedor_id: m.contenedor,
+        puerto_origen: RUTA.origen, destino: RUTA.destino }),
+    }).then(r => r.json());
+    await fetch(`${API}/mandatos`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operacion_id: op.id, tope_precio: d.tope,
+        ventana_inicio: d.dia, ventana_fin: d.dia,
+        condiciones: [`Franja horaria ${d.desde}–${d.hasta}`],
+        vigente_hasta: new Date(Date.now() + 12 * 3600e3).toISOString() }),
+    });
+    m.backend_operacion_id = op.id;
+    console.log("[backend] operacion", op.id, "| tope", d.tope, "| ventana", d.dia);
+  } catch (e) {
+    console.error("[backend] no se pudo crear el mandato:", e);
+  }
+}
+
+// La tercera llamada de la ronda no se simula: se marca de verdad por
+// Twilio y se espera el commitment que Volta escriba en el backend.
+async function abrirLlamadaReal(m, carrier) {
+  const ll = {
+    call_id: `call-${String(++seqCall).padStart(4, "0")}`, mandato_id: m.id,
+    carrier, chofer: carrier.chofer, direccion: "saliente", inicio: Date.now(),
+    fase: "marcando", oferta: null, resumen: "Llamada telefónica real…",
+    turnos: [], fases: [{ k: "Marcando (teléfono)", ts: Date.now() }],
+    pide_humano: false, real: true,
+  };
+  m.llamadas.push(ll);
+  ensuciar();
+
+  try {
+    const r = await fetch(`${VOZ}/call/start`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    }).then(r => r.json());
+    console.log("[llamada real]", r);
+    ll.fase = "negociando";
+    ll.fases.push({ k: "Sonando", ts: Date.now() });
+    di(ll, "agent", "Llamando por teléfono al transportista…");
+    ensuciar();
+  } catch (e) {
+    console.error("[llamada real] no se pudo marcar:", e);
+    ll.fase = "rechazada";
+    ll.resumen = "No se pudo establecer la llamada";
+    ensuciar();
+    return;
+  }
+
+  esperarCommitmentReal(m, ll);
+}
+
+// Poll al backend hasta que aparezca el commitment de la llamada real.
+function esperarCommitmentReal(m, ll) {
+  let intentos = 0;
+  const t = setInterval(async () => {
+    if (++intentos > 240) return clearInterval(t);
+    if (!m.backend_operacion_id) return;
+    try {
+      const cs = await fetch(`${API}/operaciones/${m.backend_operacion_id}/commitments`).then(r => r.json());
+      if (!cs.length) return;
+      clearInterval(t);
+      const b = cs[cs.length - 1];
+      ll.oferta = b.monto;
+      ll.fase = b.aprobado ? "cerrada" : "rechazada";
+      ll.fin = Date.now();
+      ll.resumen = b.aprobado
+        ? `Acordado ${moneda(b.monto)} — retiro ${b.fecha_retiro} ${b.hora_retiro ?? ""}`
+        : `Rechazado por el guardrail: ${b.motivo_rechazo}`;
+      ll.fases.push({ k: b.aprobado ? "Cotización en firme" : "Cerró sin acuerdo", ts: ll.fin });
+      di(ll, "user", `${b.contraparte}: ${moneda(b.monto)} para el ${b.fecha_retiro}.`);
+      // Sin esto el contador queda en "2 de 3 cotizaron": la llamada real
+      // nunca pasaba por cotizar(), que es quien empuja acá.
+      m.cotizaciones.push({ carrier: ll.carrier, oferta: b.monto, dentro: b.aprobado,
+        pide_humano: false, call_id: b.call_id });
+      estado.commitments.push({
+        id: b.id, mandato_id: m.id, operacion_id: m.backend_operacion_id, call_id: b.call_id,
+        contraparte: b.contraparte, carrier: ll.carrier, chofer: ll.carrier.chofer,
+        tipo: b.tipo, monto: b.monto, fecha_retiro: b.fecha_retiro, hora_retiro: b.hora_retiro,
+        creado_en: Date.now(), compitieron: m.cotizaciones.length,
+        aprobado: b.aprobado, motivo_rechazo: b.motivo_rechazo,
+      });
+      if (b.aprobado) { m.commitment_id = b.id; m.estado = "cerrado"; }
+      ensuciar();
+      console.log("[llamada real] commitment", b.aprobado ? "APROBADO" : "RECHAZADO", b);
+    } catch (e) { /* el backend puede no estar arriba; se reintenta */ }
+  }, 2000);
 }
 
 const CARRIERS = [
@@ -1036,7 +1143,11 @@ function elegirYLlamar(m) {
   m.estado = "llamando";
   m.candidatos = rankear();
   ensuciar();
-  m.candidatos.forEach((c, i) => setTimeout(() => abrirLlamada(m, c.carrier), i * 1900));
+  // Las dos primeras se simulan; la tercera se marca de verdad por telefono.
+  m.candidatos.forEach((c, i) => setTimeout(
+    () => (i === 2 ? abrirLlamadaReal(m, c.carrier) : abrirLlamada(m, c.carrier)),
+    i * 1900
+  ));
 }
 
 function abrirLlamada(m, carrier) {
@@ -2072,8 +2183,96 @@ function semilla() {
   setTimeout(() => altaMandatoLocal({ dia: manana, desde: "14:00", hasta: "18:00", tope: 7000, contenedor: "TCLU7788990" }), 9500);
 }
 
-semilla();
+// semilla() queda para probar la vista sin backend, pero NO corre sola: los
+// dos mandatos demo disparaban dos rondas a la vez y con llamadas reales de
+// por medio eso significa dos llamadas telefonicas simultaneas.
 render();
+
+/* ==========================================================================
+   ESCALACION EN VIVO — Volta pide un humano
+   Poll al server de voz. Cuando escala, suena la alarma y el operador
+   entra a la MISMA llamada (conferencia de Twilio), sin cortarla.
+   ========================================================================== */
+(function escalacionEnVivo() {
+  const panel = document.createElement("div");
+  panel.id = "escalacion-panel";
+  panel.style.cssText =
+    "position:fixed;right:18px;bottom:18px;width:360px;z-index:9999;display:none;" +
+    "background:#1a1206;border:2px solid #d97706;border-radius:10px;padding:14px 16px;" +
+    "box-shadow:0 10px 40px rgba(0,0,0,.5);font:13px/1.45 system-ui,sans-serif;color:#fde68a";
+  document.body.appendChild(panel);
+
+  let sonando = false, ctx = null;
+  function beep() {
+    try {
+      ctx = ctx || new AudioContext();
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = 880; g.gain.value = 0.07;
+      o.connect(g).connect(ctx.destination); o.start();
+      setTimeout(() => o.stop(), 220);
+    } catch (e) {}
+  }
+
+  async function atender() {
+    const b = panel.querySelector("#esc-btn");
+    b.disabled = true;
+    b.textContent = "Llamando al operador…";
+    try {
+      const r = await fetch(`${VOZ}/call/operator`, { method: "POST" }).then(r => r.json());
+      b.textContent = r.ok
+        ? "En la llamada — atendé el teléfono"
+        : "No se pudo: " + (r.error ?? "error");
+      if (r.ok) panel.querySelector("#esc-volver").style.display = "block";
+    } catch (e) {
+      b.textContent = "No se pudo conectar al server de voz";
+    }
+  }
+
+  async function devolver() {
+    try {
+      await fetch(`${VOZ}/call/return`, { method: "POST" });
+      panel.style.display = "none";
+      sonando = false;
+    } catch (e) {}
+  }
+
+  function pintar(e) {
+    panel.style.display = "block";
+    panel.innerHTML =
+      `<div style="font-weight:700;color:#fbbf24;margin-bottom:6px">⚠ Volta escaló la llamada</div>` +
+      `<div style="margin-bottom:8px"><b>Motivo:</b> ${e.motivo || "—"}</div>` +
+      `<div style="white-space:pre-wrap;background:#0d0a04;border-radius:6px;padding:8px;` +
+      `max-height:170px;overflow:auto;margin-bottom:10px">${e.resumen || "Preparando resumen…"}</div>` +
+      `<button id="esc-btn" style="width:100%;padding:9px;border:0;border-radius:6px;` +
+      `background:#d97706;color:#111;font-weight:700;cursor:pointer">Atender y hablar con el transportista</button>` +
+      `<button id="esc-volver" style="display:none;width:100%;margin-top:8px;padding:9px;border:1px solid #d97706;` +
+      `border-radius:6px;background:transparent;color:#fbbf24;font-weight:700;cursor:pointer">Terminé — que Volta cierre el commitment</button>`;
+    panel.querySelector("#esc-btn").onclick = atender;
+    panel.querySelector("#esc-volver").onclick = devolver;
+  }
+
+  // Se repinta solo cuando cambia el contenido (el resumen llega unos
+  // segundos despues) y nunca despues de que el operador apreto Atender,
+  // para no pisarle el estado a los botones.
+  let ultimo = "", tomada = false;
+
+  setInterval(async () => {
+    try {
+      const { escalacion: e } = await fetch(`${VOZ}/call/status`).then(r => r.json());
+      if (!e?.activa) {
+        if (sonando) { panel.style.display = "none"; sonando = false; ultimo = ""; tomada = false; }
+        return;
+      }
+      if (!sonando) { sonando = true; beep(); setTimeout(beep, 400); setTimeout(beep, 800); }
+      const firma = (e.motivo || "") + "|" + (e.resumen || "");
+      if (!tomada && firma !== ultimo) { ultimo = firma; pintar(e); }
+    } catch (err) { /* server de voz abajo: se reintenta */ }
+  }, 1500);
+
+  panel.addEventListener("click", (ev) => {
+    if (ev.target && ev.target.id === "esc-btn") tomada = true;
+  });
+})();
 tick();
 
 // Un solo bucle: render sólo si algo cambió; el tick siempre (barato).
