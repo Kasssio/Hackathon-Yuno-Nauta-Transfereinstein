@@ -84,7 +84,9 @@ svg { flex: none; }
 .principal { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 #vista-dash { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .cuerpo {
-  flex: 1; display: grid; grid-template-columns: 340px minmax(0,1fr) 336px;
+  /* Mandatos es la columna operativa, no una barra lateral: se lleva el ancho
+     que le sacamos a la tabla de commitments. */
+  flex: 1; display: grid; grid-template-columns: 440px minmax(0,1fr) 320px;
   gap: var(--gap); padding: 0 var(--gap) var(--gap); min-height: 0;
 }
 .columna { display: flex; flex-direction: column; gap: var(--gap); min-height: 0; }
@@ -156,11 +158,25 @@ svg { flex: none; }
 .tile__valor { font-size: 40px; font-weight: 800; letter-spacing: -.055em; line-height: 1; }
 .tile__nota { font-size: 12px; color: var(--ink-3); font-weight: 500; }
 
+/* Cada KPI lleva su color: el icono en su tinte y una barra al pie. Sin esto
+   la tira de arriba era cinco cajas grises iguales. */
+.tile::after { content: ""; position: absolute; inset: auto 0 0 0; height: 2px; opacity: .55; }
+.tile--teal .tile__ico { color: var(--accent); background: var(--accent-dim); }
+.tile--teal::after { background: var(--accent); }
 .tile--good .tile__valor { color: var(--good); }
-.tile--good .tile__ico   { color: var(--good); }
+.tile--good .tile__ico   { color: var(--good); background: var(--good-dim); }
+.tile--good::after { background: var(--good); }
 .tile--warn .tile__valor { color: var(--warn); }
-.tile--warn .tile__ico   { color: var(--warn); }
-.tile--vivo .tile__ico   { color: var(--accent); }
+.tile--warn .tile__ico   { color: var(--warn); background: var(--warn-dim); }
+.tile--warn::after { background: var(--warn); }
+.tile--vivo .tile__valor { color: var(--accent); }
+.tile--vivo .tile__ico   { color: var(--accent); background: var(--accent-dim); box-shadow: none; }
+.tile--vivo::after { background: linear-gradient(90deg, var(--accent), var(--good)); opacity: .8; }
+/* El tile de llamadas en vivo respira cuando hay alguna */
+.tile--vivo:not(.tile--cero) .tile__ico { animation: respira 2.4s ease-in-out infinite; }
+@keyframes respira { 0%,100% { box-shadow: 0 0 0 0 rgba(45,212,191,0); } 50% { box-shadow: 0 0 0 5px rgba(45,212,191,.13); } }
+.tile--cero .tile__valor { color: var(--ink-3); }
+.tile--cero::after { opacity: .18; }
 
 .spark { margin-top: 2px; height: 30px; }
 
@@ -206,8 +222,20 @@ svg { flex: none; }
   border: 1px solid var(--borde); box-shadow: var(--nm-suave); overflow: hidden;
   transition: box-shadow .3s, border-color .3s;
 }
+/* Franja de color al borde izquierdo: el estado del mandato se lee sin leer
+   la pill, incluso de reojo desde el otro lado de la sala. */
+.mandato { position: relative; }
+.mandato::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 3px;
+  background: var(--ink-3); opacity: .5;
+}
 .mandato--llamando { border-color: rgba(45,212,191,.4); }
+.mandato--llamando::before { background: linear-gradient(180deg, var(--accent), #159c8d); opacity: 1; }
+.mandato--evaluando::before { background: var(--ink-3); }
+.mandato--cerrado::before { background: var(--good); opacity: 1; }
 .mandato--escalado { border-color: rgba(251,146,60,.4); }
+.mandato--escalado::before { background: var(--warn); opacity: 1; }
+.mandato--revocado::before { background: var(--bad); opacity: 1; }
 .entra { animation: entra .42s cubic-bezier(.2,.75,.3,1); }
 @keyframes entra { from { opacity: 0; transform: translateY(-9px) } to { opacity: 1; transform: none } }
 
@@ -223,6 +251,14 @@ svg { flex: none; }
 }
 .termino__k { display: flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); }
 .termino__v { font-size: 12.5px; font-weight: 700; letter-spacing: -.025em; }
+/* Día y franja en teal (cuándo), el tope en ámbar (el límite que no se cruza). */
+.termino:nth-child(1) .termino__k svg, .termino:nth-child(2) .termino__k svg { color: var(--accent); }
+.termino:nth-child(3) .termino__k svg { color: var(--warn); }
+.termino:nth-child(3) .termino__v { color: var(--warn); }
+
+/* Iconos de las cabeceras de panel, cada uno en el color de su sección */
+.panel__head .head__izq svg { color: var(--accent); }
+.panel--esc .panel__head .head__izq svg { color: var(--warn); }
 
 .progreso { padding: 0 14px 12px; display: flex; flex-direction: column; gap: 6px; }
 .progreso__t { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); }
@@ -257,6 +293,56 @@ svg { flex: none; }
   padding: 11px 14px; border-top: 1px solid var(--borde); font-size: 11.5px; color: var(--ink-3);
 }
 .mandato__pie b { color: var(--ink); font-weight: 700; }
+
+/* -- Revocar mandato ------------------------------------------------------ */
+/* El botón del trial by fire: destructivo, pero no grita hasta que lo tocás. */
+.acciones { padding: 0 14px 13px; }
+.btn-revocar {
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+  padding: 10px; border-radius: var(--r); cursor: pointer;
+  font-family: inherit; font-size: 12.5px; font-weight: 700; letter-spacing: -.012em;
+  background: var(--bad-dim); border: 1px solid rgba(248,113,113,.45); color: var(--bad);
+  box-shadow: var(--nm-suave);
+  transition: color .18s, border-color .18s, background .18s, box-shadow .18s;
+}
+.btn-revocar:hover:not(:disabled) {
+  background: linear-gradient(145deg, #f4635c, #c73833); color: #fff;
+  border-color: transparent; box-shadow: var(--nm-suave), 0 0 16px rgba(248,113,113,.35);
+}
+.btn-revocar:active:not(:disabled) { box-shadow: var(--nm-hueco); }
+.btn-revocar:disabled { opacity: .55; cursor: default; }
+.btn-revocar__sp {
+  width: 13px; height: 13px; border-radius: 50%; flex: none;
+  border: 2px solid rgba(248,113,113,.3); border-top-color: var(--bad);
+  animation: girar .7s linear infinite;
+}
+@keyframes girar { to { transform: rotate(360deg); } }
+
+.pill--revocado { color: var(--bad); background: var(--bad-dim); border-color: rgba(248,113,113,.4); }
+.mandato--revocado { border-color: rgba(248,113,113,.3); }
+/* Revocado: la tarjeta queda legible pero visiblemente fuera de juego. */
+.mandato--revocado .terminos, .mandato--revocado .vivas, .mandato--revocado .progreso { opacity: .45; }
+
+/* -- Toasts --------------------------------------------------------------- */
+.toasts {
+  position: fixed; right: 18px; bottom: 18px; z-index: 60;
+  display: flex; flex-direction: column; gap: 9px; max-width: 360px;
+}
+.toast {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px; border-radius: var(--r-md);
+  background: var(--surface-2); border: 1px solid var(--borde);
+  box-shadow: var(--nm), 0 10px 30px rgba(0,0,0,.45);
+  font-size: 13px; line-height: 1.5; color: var(--ink);
+  animation: entraToast .28s cubic-bezier(.2,.8,.3,1);
+}
+@keyframes entraToast { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+.toast--bad { border-color: rgba(248,113,113,.45); }
+.toast--bad .toast__i { color: var(--bad); }
+.toast--ok  { border-color: rgba(52,211,153,.45); }
+.toast--ok .toast__i { color: var(--good); }
+.toast__i { flex: none; margin-top: 1px; }
+.toast__d { font-size: 11.5px; color: var(--ink-3); margin-top: 3px; }
 
 /* ==========================================================================
    PILLS
@@ -741,6 +827,8 @@ body.foco #vista-res { display: block; flex: 1; min-height: 0; overflow-y: auto;
   </div><!-- /principal -->
 </div>
 
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
 <dialog class="drawer" id="drawer">
   <div class="drawer__head">
     <div>
@@ -859,7 +947,7 @@ async function escribirMandatoEnBackend(d, m) {
       body: JSON.stringify({ cliente: RUTA.cliente, contenedor_id: m.contenedor,
         puerto_origen: RUTA.origen, destino: RUTA.destino }),
     }).then(r => r.json());
-    await fetch(`${API}/mandatos`, {
+    const mandato = await fetch(`${API}/mandatos`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       // La franja va en horario_inicio/horario_fin, que es lo que lee
       // check_mandato. Antes viajaba como texto libre en condiciones y
@@ -869,9 +957,13 @@ async function escribirMandatoEnBackend(d, m) {
         horario_inicio: d.desde, horario_fin: d.hasta,
         condiciones: [],
         vigente_hasta: new Date(Date.now() + 12 * 3600e3).toISOString() }),
-    });
+    }).then(r => r.json());
     m.backend_operacion_id = op.id;
-    console.log("[backend] operacion", op.id, "| tope", d.tope, "| ventana", d.dia);
+    // Guardamos el id del mandato para poder revocarlo despues: el boton de
+    // "Revocar mandato" le pega a POST /mandatos/{id}/revocar.
+    m.backend_mandato_id = mandato.id;
+    ensuciar();
+    console.log("[backend] operacion", op.id, "| mandato", mandato.id, "| tope", d.tope, "| ventana", d.dia);
   } catch (e) {
     console.error("[backend] no se pudo crear el mandato:", e);
   }
@@ -1161,17 +1253,20 @@ const rankear = () => CARRIERS
   .slice(0, 3);
 
 function elegirYLlamar(m) {
+  if (m.revocado) return;
   m.estado = "llamando";
   m.candidatos = rankear();
   ensuciar();
   // Las dos primeras se simulan; la tercera se marca de verdad por telefono.
-  m.candidatos.forEach((c, i) => setTimeout(
-    () => (i === 2 ? abrirLlamadaReal(m, c.carrier) : abrirLlamada(m, c.carrier)),
-    i * 1900
-  ));
+  // El guard va adentro del timeout: el mandato puede revocarse en el medio.
+  m.candidatos.forEach((c, i) => setTimeout(() => {
+    if (m.revocado) return;
+    return i === 2 ? abrirLlamadaReal(m, c.carrier) : abrirLlamada(m, c.carrier);
+  }, i * 1900));
 }
 
 function abrirLlamada(m, carrier) {
+  if (m.revocado) return;
   const ll = {
     call_id: `call-${String(++seqCall).padStart(4, "0")}`, mandato_id: m.id,
     carrier, chofer: carrier.chofer, direccion: "saliente", inicio: Date.now(),
@@ -1182,6 +1277,7 @@ function abrirLlamada(m, carrier) {
   ensuciar();
 
   setTimeout(() => {
+    if (m.revocado) return;
     ll.fase = "negociando";
     ll.fases.push({ k: "Atendió", ts: Date.now() });
     di(ll, "agent", `Buenas, le hablo de ${RUTA.cliente}. Necesito un camión de ${RUTA.origen} a ${RUTA.destino} el ${fechaLarga(m.dia)}, retiro entre ${m.desde} y ${m.hasta}.`);
@@ -1192,6 +1288,7 @@ function abrirLlamada(m, carrier) {
 }
 
 function cotizar(m, ll) {
+  if (m.revocado) return;
   ll.oferta = ll.carrier.tarifa;
   ll.resumen = "Cotiza inicial";
   ll.fases.push({ k: "Cotizó", ts: Date.now() });
@@ -1201,6 +1298,7 @@ function cotizar(m, ll) {
 }
 
 function negociar(m, ll) {
+  if (m.revocado) return;
   const piso = Math.round(ll.carrier.tarifa * (1 - ll.carrier.flex));
   di(ll, "agent", `Tengo autorizado hasta ${moneda(m.tope_precio)}. ¿Lo podemos ajustar?`);
   ll.fases.push({ k: "Contraoferta de Volta", ts: Date.now() });
@@ -1227,6 +1325,9 @@ function negociar(m, ll) {
 const di = (ll, role, text) => ll.turnos.push({ role, text, ts: Date.now() });
 
 function cerrarLlamada(m, ll) {
+  // aplicarRevocacion ya cerró y archivó las llamadas vivas; sin esto se
+  // duplicarían en el historial.
+  if (m.revocado) return;
   const dentro = ll.oferta <= m.tope_precio;
   ll.fase = dentro ? "cerrada" : "rechazada";
   ll.fin = Date.now();
@@ -1245,6 +1346,9 @@ function cerrarLlamada(m, ll) {
 }
 
 function decidir(m) {
+  // Revocado a mitad de la ronda: no se registra ningún commitment, ni
+  // siquiera uno rechazado. No hay mandato bajo el cual evaluarlo.
+  if (m.revocado) return;
   const viables = m.cotizaciones.filter(q => q.dentro).sort((a, b) => a.oferta - b.oferta);
 
   if (viables.length === 0) {
@@ -1380,13 +1484,16 @@ function renderBrief() {
     if (m) { acc += m.tope_precio - c.monto; serie.push(acc); }
   });
 
+  // Cada KPI tiene color propio, y se apaga a gris cuando está en cero: así
+  // la tira de arriba se lee de un vistazo en vez de ser cinco cajas iguales.
+  const cero = n => (n ? "" : " tile--cero");
   const tiles = [
-    { v: activos, n: "Mandatos activos", i: "target" },
-    { v: envivo, n: "Llamadas en vivo", i: "phone", cls: envivo ? "tile--vivo" : "" },
-    { v: conf.length, n: "Commitments confirmados", i: "check" },
-    { v: moneda(acc), n: "Ahorro vs. tope", i: "trend", cls: "tile--good", spark: serie },
+    { v: activos, n: "Mandatos activos", i: "target", cls: "tile--teal" + cero(activos) },
+    { v: envivo, n: "Llamadas en vivo", i: "phone", cls: "tile--vivo" + cero(envivo) },
+    { v: conf.length, n: "Commitments confirmados", i: "check", cls: "tile--good" + cero(conf.length) },
+    { v: moneda(acc), n: "Ahorro vs. tope", i: "trend", cls: "tile--good" + cero(acc), spark: serie },
     { v: estado.escalaciones.length, n: "Escalados a humano", i: "alerta",
-      cls: estado.escalaciones.length ? "tile--warn" : "" },
+      cls: "tile--warn" + cero(estado.escalaciones.length) },
   ];
 
   $("brief").replaceChildren(...tiles.map(t => {
@@ -1426,15 +1533,16 @@ function renderMandatos() {
 }
 
 function cardMandato(m) {
-  const w = el("div", `mandato mandato--${m.estado}` + (esNuevo(m.id) ? " entra" : ""));
+  const claseEstado = m.revocado ? "revocado" : m.estado;
+  const w = el("div", `mandato mandato--${claseEstado}` + (esNuevo(m.id) ? " entra" : ""));
 
   const top = el("div", "mandato__top");
   const izq = el("div");
   izq.append(el("div", "mandato__id", m.id), el("div", "mandato__cont mono", m.contenedor));
-  const etq = { evaluando:"Evaluando", llamando:"Llamando", cerrado:"Cerrado", escalado:"Escalado" };
-  const pill = el("span", `pill pill--${m.estado}`);
-  if (m.estado === "llamando") pill.append(el("span", "pill__p"));
-  pill.append(document.createTextNode(etq[m.estado]));
+  const etq = { evaluando:"Evaluando", llamando:"Llamando", cerrado:"Cerrado", escalado:"Escalado", revocado:"Revocado" };
+  const pill = el("span", `pill pill--${claseEstado}`);
+  if (claseEstado === "llamando") pill.append(el("span", "pill__p"));
+  pill.append(document.createTextNode(etq[claseEstado]));
   top.append(izq, pill);
   w.append(top);
 
@@ -1444,7 +1552,7 @@ function cardMandato(m) {
            termino("wallet", "Tope", moneda(m.tope_precio)));
   w.append(t);
 
-  if (m.estado === "evaluando" || m.estado === "llamando") {
+  if (!m.revocado && (m.estado === "evaluando" || m.estado === "llamando")) {
     const total = m.candidatos?.length ?? 3;
     const hechas = m.cotizaciones.length;
     const p = el("div", "progreso");
@@ -1466,7 +1574,92 @@ function cardMandato(m) {
   }
 
   w.append(pieMandato(m));
+  if (!m.revocado) w.append(accionesMandato(m));
   return w;
+}
+
+/* El botón del trial by fire: un juez lo aprieta a mitad de la ronda y Volta
+   deja de poder cerrar, aunque ya haya aceptado de palabra. */
+function accionesMandato(m) {
+  const caja = el("div", "acciones");
+  const b = el("button", "btn-revocar");
+  b.type = "button";
+  b.append(ico("x", 13), document.createTextNode("Revocar mandato"));
+  b.onclick = () => revocarMandato(m, b);
+  caja.append(b);
+  return caja;
+}
+
+/* ==========================================================================
+   REVOCACIÓN
+   --------------------------------------------------------------------------
+   Le pega a POST /mandatos/{id}/revocar, que es el endpoint real del backend
+   (no un DELETE): el mandato no se borra, se marca revocado, y el trail
+   auditable conserva que existió y cuándo se cayó.
+   ========================================================================== */
+async function revocarMandato(m, boton) {
+  if (m.revocando || m.revocado) return;
+  m.revocando = true;
+
+  // Estado de carga: el render puede reconstruir la tarjeta, así que el texto
+  // se pinta acá y además se guarda en el mandato.
+  boton.disabled = true;
+  boton.replaceChildren(el("span", "btn-revocar__sp"), document.createTextNode("Revocando…"));
+
+  try {
+    if (m.backend_mandato_id) {
+      const r = await fetch(`${API}/mandatos/${m.backend_mandato_id}/revocar`, { method: "POST" });
+      if (!r.ok) throw new Error(`el backend respondió ${r.status}`);
+    } else if (USAR_BACKEND) {
+      // Sin id no hay nada que revocar del lado del backend: es un error real,
+      // no algo para tapar — Volta seguiría leyendo el mandato viejo.
+      throw new Error("este mandato no se escribió en el backend");
+    }
+
+    aplicarRevocacion(m);
+    toast("ok", `${m.id} revocado`, "Volta ya no puede cerrar nada bajo este mandato.");
+  } catch (e) {
+    console.error("[revocar]", e);
+    m.revocando = false;
+    boton.disabled = false;
+    boton.replaceChildren(ico("x", 13), document.createTextNode("Revocar mandato"));
+    toast("bad", "No se pudo revocar el mandato", String(e.message ?? e));
+    return;
+  }
+
+  m.revocando = false;
+  ensuciar();
+  render();
+}
+
+/** Corta la operación del mandato: las llamadas vivas se cierran y no se
+    registra ningún commitment nuevo. */
+function aplicarRevocacion(m) {
+  m.revocado = true;
+  m.revocado_en = Date.now();
+
+  m.llamadas.forEach(ll => {
+    ll.fase = "rechazada";
+    ll.fin = Date.now();
+    ll.resumen = "Cortada — mandato revocado";
+    ll.fases.push({ k: "Mandato revocado", ts: ll.fin });
+    estado.llamadas.push({ ...ll, id: ll.call_id, contraparte: ll.carrier.nombre,
+      escalado: false, motivo_escalacion: null });
+  });
+  m.llamadas = [];
+}
+
+/* Toasts: avisos cortos que no bloquean nada. */
+function toast(tipo, texto, detalle) {
+  const t = el("div", `toast toast--${tipo}`);
+  const i = el("span", "toast__i");
+  i.append(ico(tipo === "ok" ? "check" : "alerta", 15));
+  const cuerpo = el("div");
+  cuerpo.append(el("div", null, texto));
+  if (detalle) cuerpo.append(el("div", "toast__d", detalle));
+  t.append(i, cuerpo);
+  $("toasts").append(t);
+  setTimeout(() => t.remove(), tipo === "bad" ? 7000 : 4000);
 }
 
 function termino(icono, k, v) {
@@ -1502,6 +1695,12 @@ function filaViva(ll) {
 
 function pieMandato(m) {
   const p = el("div", "mandato__pie");
+  if (m.revocado) {
+    const izq = el("span");
+    izq.append(document.createTextNode("Revocado "), el("b", null, horaDe(m.revocado_en)));
+    p.append(izq, el("span", null, "Volta no puede cerrar"));
+    return p;
+  }
   if (m.estado === "evaluando" || m.estado === "llamando") {
     p.append(el("span", null, `${CARRIERS.length} transportistas en la base`));
     return p;
@@ -2329,6 +2528,45 @@ setInterval(() => {
     "Día de retiro": "Pickup day",
     "Franja desde": "Window from",
     "Franja hasta": "Window to",
+    // KPIs de la tira superior
+    "Mandatos activos": "Active mandates",
+    "Llamadas en vivo": "Live calls",
+    "Commitments confirmados": "Confirmed commitments",
+    "Ahorro vs. tope": "Savings vs. cap",
+    "Escalados a humano": "Escalated to a human",
+    // Modo resolución
+    "Volver al dashboard": "Back to dashboard",
+    "Mandato original": "Original mandate",
+    "Transportista derivado": "Handed-off carrier",
+    "Mandato en juego": "Mandate at stake",
+    "tope autorizado": "authorized cap",
+    "oferta fuera de mandato": "offer outside the mandate",
+    "pedido de humano": "request for a human",
+    "Mesa de operaciones": "Operations desk",
+    "Volta está cerrando todo dentro de mandato. Cuando algo se salga de los límites o la contraparte pida un humano, el caso aparece acá.":
+      "Volta is closing everything within its mandate. When something falls outside the limits, or the counterpart asks for a human, the case shows up here.",
+    // Detalle
+    "Franja horaria": "Time window",
+    "Franja autorizada": "Authorized window",
+    "Última oferta": "Last offer",
+    "Tarifa de lista": "List rate",
+    "Viajes previos": "Previous trips",
+    "Llamada de origen": "Originating call",
+    "Cotizaciones comparadas": "Quotes compared",
+    "Contraoferta de Volta": "Volta's counteroffer",
+    "Esta decisión la toma código determinístico, no el modelo de voz. Corre en backend/app/guardrail.py, antes de que el commitment se escriba al estado.":
+      "This decision is made by deterministic code, not the voice model. It runs in backend/app/guardrail.py, before the commitment is written to state.",
+    "Fecha no válida: no es posible ingresar fechas pasadas. Por favor, selecciona una fecha actual o futura.":
+      "Invalid date: past dates are not allowed. Please pick today or a future date.",
+    "Revocar mandato": "Revoke mandate",
+    "Revocando…": "Revoking…",
+    "Revocado": "Revoked",
+    "Volta no puede cerrar": "Volta cannot commit",
+    "No se pudo revocar el mandato": "Could not revoke the mandate",
+    "Volta ya no puede cerrar nada bajo este mandato.":
+      "Volta can no longer commit anything under this mandate.",
+    "Cortada — mandato revocado": "Ended — mandate revoked",
+    "Mandato revocado": "Mandate revoked",
     "Precio máximo (MXN)": "Maximum price (MXN)",
     "Número entero mayor a cero. Volta no puede comprometer un peso por encima.":
       "Whole number greater than zero. Volta cannot commit a peso above it.",
