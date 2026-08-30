@@ -3,537 +3,591 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Volta — Consola de Operación</title>
+<title>Volta — Centro de Operaciones</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
 /* ==========================================================================
-   TOKENS — tema claro en :root, oscuro redefinido dos veces (media + stamp).
-   Ningún color se define únicamente dentro de un bloque de tema.
+   VOLTA — tema oscuro con neumorfismo suave.
+   Diseño de un solo mundo visual: la profundidad depende de la relación exacta
+   entre la superficie y sus dos sombras, así que el tema NO se invierte. Todos
+   los colores se pintan explícitamente para que la página no tome nada del host.
    ========================================================================== */
 :root {
-  --ground:      #e9edec;
-  --surface:     #ffffff;
-  --surface-2:   #f3f6f5;
-  --surface-3:   #e4eae9;
-  --line:        #d2dad9;
-  --line-soft:   #e2e8e7;
-  --ink:         #0f1b1d;
-  --ink-2:       #4c5c5e;
-  --ink-3:       #7d8c8d;
-  --accent:      #00706c;
-  --accent-ink:  #ffffff;
-  --accent-wash: #e2efee;
-  --ok:          #12734a;
-  --ok-wash:     #e2f0e9;
-  --warn:        #9a5405;
-  --warn-wash:   #fbeddc;
-  --bad:         #a3282a;
-  --bad-wash:    #f8e6e5;
-  --shadow:      0 1px 2px rgba(15, 27, 29, .06), 0 8px 24px -12px rgba(15, 27, 29, .18);
+  --bg:         #1a1e23;
+  --surface:    #1f252b;
+  --surface-2:  #242b32;
+  --well:       #171b20;
+  --borde:      rgba(255,255,255,.055);
+  --borde-alto: rgba(255,255,255,.09);
 
-  --r:   6px;
-  --r-lg: 10px;
-  --gap: 14px;
+  --ink:        #e9eef3;
+  --ink-2:      #9dabb6;
+  --ink-3:      #6c7985;
+
+  --accent:     #2dd4bf;
+  --accent-dim: rgba(45,212,191,.13);
+  --good:       #34d399;
+  --good-dim:   rgba(52,211,153,.13);
+  --warn:       #fb923c;
+  --warn-dim:   rgba(251,146,60,.13);
+  --bad:        #f87171;
+  --bad-dim:    rgba(248,113,113,.13);
+
+  /* Neumorfismo: sombra clara arriba-izquierda, oscura abajo-derecha. */
+  --nm:        -5px -5px 13px rgba(255,255,255,.021),  6px 6px 16px rgba(0,0,0,.50);
+  --nm-suave:  -3px -3px  8px rgba(255,255,255,.017),  4px 4px 11px rgba(0,0,0,.40);
+  --nm-alto:   -6px -6px 16px rgba(255,255,255,.026),  9px 9px 22px rgba(0,0,0,.55);
+  --nm-hueco:  inset -2px -2px 6px rgba(255,255,255,.022), inset 3px 3px 8px rgba(0,0,0,.46);
+
+  --r:    10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --gap:  14px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --ground:      #080f11;
-    --surface:     #0f1b1e;
-    --surface-2:   #16252a;
-    --surface-3:   #1d3037;
-    --line:        #22373d;
-    --line-soft:   #1a2a2f;
-    --ink:         #e1eae9;
-    --ink-2:       #9db1b1;
-    --ink-3:       #6b8083;
-    --accent:      #47c3b4;
-    --accent-ink:  #04211f;
-    --accent-wash: #10312f;
-    --ok:          #45c185;
-    --ok-wash:     #0f2e21;
-    --warn:        #e0a052;
-    --warn-wash:   #33240f;
-    --bad:         #ef8079;
-    --bad-wash:    #3a1a19;
-    --shadow:      0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
-  }
-}
-
-:root[data-theme="dark"] {
-  --ground:      #080f11;
-  --surface:     #0f1b1e;
-  --surface-2:   #16252a;
-  --surface-3:   #1d3037;
-  --line:        #22373d;
-  --line-soft:   #1a2a2f;
-  --ink:         #e1eae9;
-  --ink-2:       #9db1b1;
-  --ink-3:       #6b8083;
-  --accent:      #47c3b4;
-  --accent-ink:  #04211f;
-  --accent-wash: #10312f;
-  --ok:          #45c185;
-  --ok-wash:     #0f2e21;
-  --warn:        #e0a052;
-  --warn-wash:   #33240f;
-  --bad:         #ef8079;
-  --bad-wash:    #3a1a19;
-  --shadow:      0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .7);
-}
-
-/* ==========================================================================
-   BASE
-   ========================================================================== */
 * { box-sizing: border-box; }
 
 body {
-  margin: 0;
-  height: 100vh;
-  overflow: hidden;
-  background: var(--ground);
-  color: var(--ink);
-  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 14px;
-  line-height: 1.45;
+  margin: 0; height: 100vh; overflow: hidden;
+  background: var(--bg); color: var(--ink);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px; line-height: 1.5; letter-spacing: -.011em;
   -webkit-font-smoothing: antialiased;
 }
 
-.mono {
-  font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  font-variant-numeric: tabular-nums;
-}
+.mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.num  { font-variant-numeric: tabular-nums; }
 
-/* Etiqueta de panel / eyebrow: la voz condensada del sistema. */
-.label {
-  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
-  font-weight: 700;
-  font-size: 11px;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
+.label { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 3px;
-}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #2c343c; border-radius: 100px; border: 3px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #3a444e; background-clip: content-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+svg { flex: none; }
 
 /* ==========================================================================
-   ESQUELETO — consola a pantalla completa
+   ESQUELETO
    ========================================================================== */
-.consola {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  height: 100vh;
-}
-
+.consola { display: flex; flex-direction: column; height: 100vh; }
+.principal { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#vista-dash { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .cuerpo {
-  display: grid;
-  grid-template-columns: 310px minmax(0, 1fr) 400px;
-  gap: var(--gap);
-  padding: var(--gap);
-  min-height: 0;
+  flex: 1; display: grid; grid-template-columns: 340px minmax(0,1fr) 336px;
+  gap: var(--gap); padding: 0 var(--gap) var(--gap); min-height: 0;
 }
-
-.columna {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
-  min-height: 0;
-}
+.columna { display: flex; flex-direction: column; gap: var(--gap); min-height: 0; }
 
 .panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+  background: var(--surface); border: 1px solid var(--borde);
+  border-radius: var(--r-lg); box-shadow: var(--nm);
+  display: flex; flex-direction: column; min-height: 0;
 }
-
-.panel__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--line-soft);
-  flex: none;
-}
-
-.panel__body { padding: 14px; overflow-y: auto; min-height: 0; }
-.panel__body--flush { padding: 0; }
+.panel__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 15px 17px 12px; flex: none; }
+.panel__body { padding: 0 17px 15px; overflow-y: auto; min-height: 0; }
+.panel__body--flush { padding: 0 0 8px; }
 .panel--crece { flex: 1; min-height: 0; }
+
+.head__izq { display: flex; align-items: center; gap: 8px; }
+.head__izq svg { color: var(--ink-3); }
+
+.cuenta {
+  display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 7px;
+  border-radius: 100px; background: var(--well); box-shadow: var(--nm-hueco);
+  font-size: 11px; font-weight: 700; color: var(--ink-2);
+}
 
 /* ==========================================================================
    HEADER
    ========================================================================== */
-.header {
-  display: flex;
-  align-items: center;
-  gap: 22px;
-  padding: 0 var(--gap);
-  height: 62px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
-  flex: none;
+.header { display: flex; align-items: center; gap: 12px; padding: 0 var(--gap); height: 62px; flex: none; }
+.logo {
+  width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
+  background: linear-gradient(145deg, #35e6d0, #1aa898);
+  color: #06231f; font-weight: 900; font-size: 17px; letter-spacing: -.04em;
+  box-shadow: var(--nm-suave), inset 0 1px 0 rgba(255,255,255,.28);
 }
+.marca__n { font-size: 17px; font-weight: 800; letter-spacing: -.03em; line-height: 1.15; }
+.marca__s { font-size: 11.5px; color: var(--ink-3); line-height: 1.25; }
+.header__der { margin-left: auto; display: flex; align-items: center; gap: 11px; }
 
-.marca { display: flex; align-items: baseline; gap: 9px; }
-
-.marca__nombre {
-  font-family: "IBM Plex Sans Condensed", sans-serif;
-  font-weight: 700;
-  font-size: 21px;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  color: var(--ink);
+.chip {
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 100px;
+  background: var(--surface); border: 1px solid var(--borde); box-shadow: var(--nm-suave);
+  font-size: 12.5px; font-weight: 600;
 }
-
-.marca__op { font-size: 12px; color: var(--ink-3); }
-
-.ruta { display: flex; align-items: center; gap: 9px; font-size: 14px; }
-.ruta__punto { font-weight: 600; }
-.ruta__flecha { color: var(--accent); font-weight: 600; }
-
-.header__meta {
-  display: flex;
-  gap: 22px;
-  margin-left: auto;
-  align-items: center;
-}
-
-.metrica { display: flex; flex-direction: column; gap: 1px; }
-.metrica__valor { font-size: 14px; font-weight: 600; }
-
-/* Badge de estado de la operación */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 11px 5px 9px;
-  border-radius: 100px;
-  font-family: "IBM Plex Sans Condensed", sans-serif;
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  border: 1px solid;
-}
-.badge__punto { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
-
-.badge--en_curso { color: var(--accent); background: var(--accent-wash); border-color: var(--accent); }
-.badge--escalado { color: var(--warn);   background: var(--warn-wash);   border-color: var(--warn); }
-.badge--cerrado  { color: var(--ink-2);  background: var(--surface-2);   border-color: var(--line); }
-
-.badge--en_curso .badge__punto { animation: latido 1.9s ease-in-out infinite; }
-@keyframes latido { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+.chip svg { color: var(--accent); }
+.reloj { text-align: right; }
+.reloj__h { font-size: 13.5px; font-weight: 700; letter-spacing: -.02em; }
+.reloj__f { font-size: 10.5px; color: var(--ink-3); }
 
 /* ==========================================================================
-   MANDATO
+   KPIs
    ========================================================================== */
-.mandato { display: flex; flex-direction: column; gap: 14px; }
+.brief { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--gap); padding: 2px var(--gap) var(--gap); }
 
-.dato { display: flex; flex-direction: column; gap: 3px; }
-.dato__valor { font-size: 15px; font-weight: 600; }
-.dato__valor--grande { font-size: 26px; font-weight: 600; letter-spacing: -.01em; }
-.dato__nota { font-size: 12px; color: var(--ink-3); }
+.tile {
+  position: relative; background: var(--surface); border: 1px solid var(--borde);
+  border-radius: var(--r-lg); box-shadow: var(--nm); padding: 16px 18px 17px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.tile__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.tile__ico {
+  width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; flex: none;
+  background: var(--well); box-shadow: var(--nm-hueco); color: var(--ink-3);
+}
+.tile__valor { font-size: 40px; font-weight: 800; letter-spacing: -.055em; line-height: 1; }
+.tile__nota { font-size: 12px; color: var(--ink-3); font-weight: 500; }
 
-/* Regla del tope: hace legible de un vistazo cuánto margen queda. */
-.regla { display: flex; flex-direction: column; gap: 5px; }
-.regla__pista {
-  position: relative;
-  height: 6px;
-  background: var(--surface-3);
-  border-radius: 100px;
-  overflow: hidden;
-}
-.regla__relleno {
-  position: absolute;
-  inset: 0 auto 0 0;
-  background: var(--accent);
-  border-radius: 100px;
-  transition: width .5s cubic-bezier(.2, .7, .3, 1);
-}
-.regla__relleno--excede { background: var(--bad); }
-.regla__pie { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); }
+.tile--good .tile__valor { color: var(--good); }
+.tile--good .tile__ico   { color: var(--good); }
+.tile--warn .tile__valor { color: var(--warn); }
+.tile--warn .tile__ico   { color: var(--warn); }
+.tile--vivo .tile__ico   { color: var(--accent); }
 
-.condiciones { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
-.condiciones li {
-  font-size: 12px;
-  color: var(--ink-2);
-  padding-left: 13px;
-  position: relative;
-}
-.condiciones li::before {
-  content: "";
-  position: absolute;
-  left: 0; top: 7px;
-  width: 5px; height: 5px;
-  border-radius: 50%;
-  background: var(--ink-3);
-}
-
-.separador { height: 1px; background: var(--line-soft); border: 0; margin: 0; }
+.spark { margin-top: 2px; height: 30px; }
 
 /* ==========================================================================
-   TRANSCRIPCIÓN EN VIVO
+   BOTONES
    ========================================================================== */
-.transcripcion {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+.btn {
+  display: inline-flex; align-items: center; gap: 7px; justify-content: center;
+  font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: -.012em;
+  padding: 9px 15px; border-radius: var(--r); cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--borde); color: var(--ink);
+  box-shadow: var(--nm-suave); transition: box-shadow .18s, background .18s, transform .12s;
 }
+.btn:hover { background: #29323a; border-color: var(--borde-alto); }
+.btn:active { box-shadow: var(--nm-hueco); transform: translateY(1px); }
 
-.turno { display: flex; flex-direction: column; gap: 4px; max-width: 76%; }
-.turno--agent { align-self: flex-start; }
-.turno--user  { align-self: flex-end; align-items: flex-end; }
+.btn--primario {
+  background: linear-gradient(145deg, #35e6d0, #16a396); color: #06231f;
+  border-color: transparent; font-weight: 700;
+  box-shadow: var(--nm-suave), inset 0 1px 0 rgba(255,255,255,.25);
+}
+.btn--primario:hover { filter: brightness(1.07); background: linear-gradient(145deg, #35e6d0, #16a396); }
+.btn--fantasma { background: transparent; border-color: transparent; box-shadow: none; color: var(--ink-2); }
+.btn--fantasma:hover { background: var(--surface-2); }
 
-.turno__quien { display: flex; align-items: center; gap: 6px; }
+.btn-nuevo {
+  display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%;
+  padding: 11px; border-radius: var(--r-md); cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: -.012em;
+  background: var(--surface-2); border: 1px dashed rgba(45,212,191,.35); color: var(--accent);
+  box-shadow: var(--nm-suave); transition: background .18s, border-color .18s, box-shadow .18s;
+}
+.btn-nuevo:hover { background: #29323a; border-color: var(--accent); }
+.btn-nuevo:active { box-shadow: var(--nm-hueco); }
 
-.burbuja {
-  padding: 9px 13px;
-  border-radius: var(--r-lg);
-  font-size: 14px;
-  line-height: 1.5;
-  border: 1px solid transparent;
-}
-.turno--agent .burbuja {
-  background: var(--accent-wash);
-  border-color: var(--accent-wash);
-  border-bottom-left-radius: 3px;
-  color: var(--ink);
-}
-.turno--user .burbuja {
-  background: var(--surface-2);
-  border-color: var(--line-soft);
-  border-bottom-right-radius: 3px;
-  color: var(--ink);
-}
+/* ==========================================================================
+   MANDATOS
+   ========================================================================== */
+.mandatos { display: flex; flex-direction: column; gap: 12px; padding: 0 17px 12px; }
 
-.turno__hora { font-size: 10px; color: var(--ink-3); }
+.mandato {
+  border-radius: var(--r-md); background: var(--surface-2);
+  border: 1px solid var(--borde); box-shadow: var(--nm-suave); overflow: hidden;
+  transition: box-shadow .3s, border-color .3s;
+}
+.mandato--llamando { border-color: rgba(45,212,191,.4); }
+.mandato--escalado { border-color: rgba(251,146,60,.4); }
+.entra { animation: entra .42s cubic-bezier(.2,.75,.3,1); }
+@keyframes entra { from { opacity: 0; transform: translateY(-9px) } to { opacity: 1; transform: none } }
 
-/* Marca inline: en este turno se disparó una evaluación del guardrail. */
-.marca-guardrail {
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 11px;
-  border-radius: 100px;
-  border: 1px dashed var(--line);
-  background: var(--surface-2);
-  font-family: "IBM Plex Sans Condensed", sans-serif;
-  font-weight: 600;
-  font-size: 11px;
-  letter-spacing: .07em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-}
-.marca-guardrail--ok  { border-color: var(--ok);  color: var(--ok);  background: var(--ok-wash); border-style: solid; }
-.marca-guardrail--bad { border-color: var(--bad); color: var(--bad); background: var(--bad-wash); border-style: solid; }
+.mandato__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 13px 14px 10px; }
+.mandato__id { font-size: 13px; font-weight: 700; letter-spacing: -.02em; }
+.mandato__cont { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
 
-/* Indicador de que la contraparte / Volta está hablando */
-.hablando {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  align-self: flex-start;
-  padding: 8px 13px;
-  border-radius: var(--r-lg);
-  background: var(--surface-2);
-  border: 1px solid var(--line-soft);
+/* Micro-paneles hundidos: los límites del mandato */
+.terminos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; padding: 0 14px 12px; }
+.termino {
+  display: flex; flex-direction: column; gap: 3px; padding: 9px 10px;
+  border-radius: var(--r); background: var(--well); box-shadow: var(--nm-hueco);
 }
-.hablando--user { align-self: flex-end; }
-.hablando__punto {
-  width: 5px; height: 5px;
-  border-radius: 50%;
-  background: var(--ink-3);
-  animation: rebote 1.2s ease-in-out infinite;
-}
-.hablando__punto:nth-child(2) { animation-delay: .15s; }
-.hablando__punto:nth-child(3) { animation-delay: .3s; }
-@keyframes rebote { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
+.termino__k { display: flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); }
+.termino__v { font-size: 12.5px; font-weight: 700; letter-spacing: -.025em; }
 
-.aparece { animation: aparece .32s cubic-bezier(.2, .7, .3, 1); }
-@keyframes aparece {
-  from { opacity: 0; transform: translateY(7px); }
-  to   { opacity: 1; transform: none; }
-}
+.progreso { padding: 0 14px 12px; display: flex; flex-direction: column; gap: 6px; }
+.progreso__t { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); }
+.progreso__p { height: 6px; border-radius: 100px; background: var(--well); box-shadow: var(--nm-hueco); overflow: hidden; }
+.progreso__b { height: 100%; border-radius: 100px; background: linear-gradient(90deg, #16a396, var(--accent)); transition: width .7s cubic-bezier(.2,.7,.3,1); }
 
-.linea-vivo {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-family: "IBM Plex Sans Condensed", sans-serif;
-  font-weight: 700;
-  font-size: 11px;
-  letter-spacing: .09em;
-  text-transform: uppercase;
-  color: var(--bad);
+.vivas { border-top: 1px solid var(--borde); }
+.viva {
+  display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 2px 11px;
+  align-items: center; width: 100%; text-align: left; cursor: pointer;
+  padding: 11px 14px; border: 0; border-bottom: 1px solid var(--borde);
+  background: transparent; color: inherit; font-family: inherit; transition: background .15s;
 }
-.linea-vivo__punto {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  animation: latido 1.4s ease-in-out infinite;
+.viva:last-child { border-bottom: 0; }
+.viva:hover { background: rgba(255,255,255,.028); }
+
+.eq { display: flex; align-items: flex-end; gap: 2px; height: 16px; width: 16px; grid-row: span 2; }
+.eq i { flex: 1; background: var(--accent); border-radius: 1.5px; height: 30%; animation: eq .9s ease-in-out infinite; }
+.eq i:nth-child(2) { animation-delay: .18s; }
+.eq i:nth-child(3) { animation-delay: .36s; }
+@keyframes eq { 0%,100% { height: 22% } 50% { height: 100% } }
+.eq--espera i { background: var(--ink-3); animation-duration: 1.8s; }
+
+.viva__q { font-size: 12.5px; font-weight: 700; letter-spacing: -.018em; }
+.viva__c { font-size: 10.5px; color: var(--ink-3); }
+.viva__d { font-size: 11px; color: var(--ink-3); grid-row: span 2; text-align: right; }
+.viva__e { grid-column: 2; font-size: 11px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viva__o { font-weight: 700; color: var(--ink); }
+
+.mandato__pie {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 11px 14px; border-top: 1px solid var(--borde); font-size: 11.5px; color: var(--ink-3);
 }
+.mandato__pie b { color: var(--ink); font-weight: 700; }
+
+/* ==========================================================================
+   PILLS
+   ========================================================================== */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 100px;
+  font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+  white-space: nowrap; border: 1px solid;
+}
+.pill__p { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill--evaluando, .pill--pendiente { color: var(--ink-2); background: rgba(255,255,255,.05); border-color: var(--borde); }
+.pill--llamando  { color: var(--accent); background: var(--accent-dim); border-color: rgba(45,212,191,.35); }
+.pill--llamando .pill__p { animation: latido 1.5s ease-in-out infinite; }
+@keyframes latido { 0%,100% { opacity: 1 } 50% { opacity: .18 } }
+.pill--cerrado, .pill--confirmado { color: var(--good); background: var(--good-dim); border-color: rgba(52,211,153,.35); }
+.pill--escalado  { color: var(--warn); background: var(--warn-dim); border-color: rgba(251,146,60,.35); }
+.pill--rechazado { color: var(--bad); background: var(--bad-dim); border-color: rgba(248,113,113,.35); }
 
 /* ==========================================================================
    COMMITMENTS
    ========================================================================== */
 .tabla { width: 100%; border-collapse: collapse; }
-
 .tabla thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--surface);
-  text-align: left;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
-  font-family: "IBM Plex Sans Condensed", sans-serif;
-  font-weight: 700;
-  font-size: 10px;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  white-space: nowrap;
+  position: sticky; top: 0; z-index: 2; background: var(--surface);
+  text-align: left; padding: 0 17px 12px;
+  font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-3); white-space: nowrap; box-shadow: inset 0 -1px 0 var(--borde);
 }
-.tabla thead th:last-child, .tabla td:last-child { text-align: right; }
+.th { display: flex; align-items: center; gap: 6px; }
+.th--der { justify-content: flex-end; }
 
-.tabla td {
-  padding: 9px 12px;
-  border-bottom: 1px solid var(--line-soft);
-  vertical-align: top;
+.tabla td { padding: 14px 17px; vertical-align: middle; }
+.fila { cursor: pointer; transition: background .15s; }
+.fila:nth-child(even) { background: rgba(255,255,255,.016); }
+.fila:hover { background: rgba(255,255,255,.045); }
+.fila:hover .chevron { opacity: .9; transform: translateX(2px); }
+.chevron { color: var(--ink-3); opacity: .3; transition: opacity .18s, transform .18s; }
+
+.c-fuerte { font-size: 13.5px; font-weight: 700; letter-spacing: -.022em; }
+.c-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+.c-monto { font-size: 19px; font-weight: 800; letter-spacing: -.045em; }
+.ahorro { color: var(--good); font-weight: 700; }
+.exceso { color: var(--bad); font-weight: 700; }
+
+.medidor { width: 84px; height: 5px; border-radius: 100px; background: var(--well); box-shadow: var(--nm-hueco); overflow: hidden; margin-top: 7px; }
+.medidor__f { height: 100%; border-radius: 100px; background: var(--good); }
+.medidor__f--x { background: var(--bad); }
+
+.td-der { text-align: right; }
+.estado-caja { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+
+.celda-quien { display: flex; align-items: center; gap: 11px; }
+
+/* Avatares */
+.av {
+  width: 34px; height: 34px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  font-size: 11.5px; font-weight: 800; letter-spacing: -.02em;
+  box-shadow: var(--nm-suave); border: 1px solid var(--borde);
 }
-.tabla tbody tr:last-child td { border-bottom: 0; }
-
-.commit__carrier { font-weight: 600; font-size: 13px; }
-.commit__tipo { font-size: 11px; color: var(--ink-3); text-transform: capitalize; }
-.commit__monto { font-weight: 600; font-size: 13px; }
-
-/* Chequeos del guardrail, visibles por fila: la decisión es determinística,
-   y esto lo muestra en vez de pedir que se confíe en el resultado. */
-.chequeos { display: flex; flex-direction: column; gap: 2px; margin-top: 5px; }
-.chequeo {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 10.5px;
-  color: var(--ink-3);
-}
-.chequeo__marca { font-weight: 700; width: 9px; flex: none; text-align: center; }
-.chequeo--pasa   .chequeo__marca { color: var(--ok); }
-.chequeo--falla  .chequeo__marca { color: var(--bad); }
-.chequeo--falla  { color: var(--bad); }
-
-.estado {
-  display: inline-block;
-  padding: 3px 8px;
-  border-radius: 100px;
-  font-family: "IBM Plex Sans Condensed", sans-serif;
-  font-weight: 700;
-  font-size: 10px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  border: 1px solid;
-}
-.estado--confirmado { color: var(--ok);    background: var(--ok-wash);    border-color: var(--ok); }
-.estado--rechazado  { color: var(--bad);   background: var(--bad-wash);   border-color: var(--bad); }
-.estado--pendiente  { color: var(--ink-2); background: var(--surface-2);  border-color: var(--line); }
-
-.motivo {
-  margin-top: 5px;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--bad);
-  text-align: left;
-}
-
-.fila-nueva { animation: destella 1.6s ease-out; }
-@keyframes destella {
-  0%   { background: var(--accent-wash); }
-  100% { background: transparent; }
-}
+.av--sm { width: 28px; height: 28px; font-size: 10px; }
 
 /* ==========================================================================
-   ESCALACIÓN — solo visible cuando hay trigger
+   ESCALACIONES
    ========================================================================== */
-.panel--escalacion { border-color: var(--warn); }
-.panel--escalacion .panel__head {
-  background: var(--warn-wash);
-  border-bottom-color: var(--warn);
-  border-radius: var(--r-lg) var(--r-lg) 0 0;
-}
-.panel--escalacion .panel__head .label { color: var(--warn); }
+.panel--esc { border-color: rgba(251,146,60,.3); }
+.panel--esc .head__izq svg, .panel--esc .head__izq .label { color: var(--warn); }
+.panel--esc .cuenta { color: var(--warn); }
 
-.escalacion { display: flex; flex-direction: column; gap: 11px; }
-.escalacion + .escalacion { padding-top: 11px; border-top: 1px solid var(--line-soft); }
-
-.escalacion__trigger {
-  display: inline-flex;
-  align-self: flex-start;
-  padding: 3px 9px;
-  border-radius: var(--r);
-  background: var(--warn-wash);
-  color: var(--warn);
-  border: 1px solid var(--warn);
-  font-family: "IBM Plex Sans Condensed", sans-serif;
-  font-weight: 700;
-  font-size: 10.5px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
+.esc {
+  display: flex; flex-direction: column; gap: 8px; padding: 13px 14px;
+  border-radius: var(--r-md); background: rgba(251,146,60,.075);
+  border: 1px solid rgba(251,146,60,.3); box-shadow: var(--nm-suave);
 }
-.escalacion__que { font-size: 13px; line-height: 1.5; }
-.escalacion__pie {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 11.5px;
-  color: var(--ink-3);
-}
-.escalacion__quien { color: var(--ink-2); font-weight: 600; }
+.esc + .esc { margin-top: 10px; }
+.esc__t { display: flex; align-items: center; gap: 7px; font-size: 9.5px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--warn); }
+.esc__q { font-size: 13px; font-weight: 700; line-height: 1.4; letter-spacing: -.02em; }
+.esc__d { font-size: 11.5px; color: var(--ink-2); line-height: 1.5; }
+.esc__p { font-size: 10.5px; color: var(--ink-3); padding-top: 2px; border-top: 1px solid rgba(251,146,60,.2); }
 
 /* ==========================================================================
-   HISTORIAL DE LLAMADAS
+   HISTORIAL
    ========================================================================== */
-.historial { list-style: none; margin: 0; padding: 0; }
-
-.llamada {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 3px 10px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--line-soft);
+.log {
+  display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 2px 11px;
+  align-items: center; width: 100%; text-align: left; cursor: pointer;
+  padding: 11px 17px; border: 0; border-bottom: 1px solid var(--borde);
+  background: transparent; color: inherit; font-family: inherit; transition: background .15s;
 }
-.llamada:last-child { border-bottom: 0; }
+.log:last-child { border-bottom: 0; }
+.log:hover { background: rgba(255,255,255,.03); }
+.log:hover .chevron { opacity: .9; }
+.log__av { grid-row: span 2; }
+.log__q { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; letter-spacing: -.018em; }
+.log__r { grid-column: 2; font-size: 11px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log__h { grid-row: span 2; font-size: 10.5px; color: var(--ink-3); text-align: right; }
+.dir-sal { color: var(--accent); }
+.dir-ent { color: var(--warn); }
 
-.llamada__hora { font-size: 11px; color: var(--ink-3); grid-row: span 2; padding-top: 1px; }
-.llamada__carrier { font-size: 13px; font-weight: 600; }
-.llamada__resultado { font-size: 11.5px; color: var(--ink-2); line-height: 1.4; }
-.llamada__resultado--escalado { color: var(--warn); }
+/* ==========================================================================
+   DRAWER
+   ========================================================================== */
+dialog { border: 0; padding: 0; color: var(--ink); }
+dialog::backdrop { background: rgba(10,13,16,.66); backdrop-filter: blur(3px); }
 
-.vacio {
-  padding: 22px 14px;
-  text-align: center;
-  font-size: 12.5px;
-  color: var(--ink-3);
+dialog.drawer {
+  margin: 0 0 0 auto; height: 100vh; max-height: 100vh; max-width: none;
+  width: min(500px, 95vw); border-radius: 0; background: var(--surface);
+  border-left: 1px solid var(--borde-alto); box-shadow: -24px 0 64px rgba(0,0,0,.6);
 }
+/* El display va SOLO en [open]: un dialog cerrado tiene que quedar en
+   display:none. Si se declara afuera, el panel queda dibujado encima del
+   layout para siempre y la X cierra el dialog sin que nada desaparezca. */
+dialog.drawer[open] { display: flex; flex-direction: column; animation: entraDrawer .3s cubic-bezier(.2,.78,.3,1); }
+@keyframes entraDrawer { from { transform: translateX(34px); opacity: .3 } to { transform: none; opacity: 1 } }
+
+.drawer__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 20px 22px 16px; border-bottom: 1px solid var(--borde); flex: none; }
+.drawer__t { font-size: 20px; font-weight: 800; letter-spacing: -.035em; line-height: 1.2; }
+.drawer__s { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
+.drawer__body { padding: 18px 22px 28px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+
+.cerrar {
+  width: 34px; height: 34px; border-radius: 11px; flex: none; display: grid; place-items: center;
+  cursor: pointer; background: var(--surface-2); border: 1px solid var(--borde);
+  color: var(--ink-2); box-shadow: var(--nm-suave); transition: background .16s, color .16s;
+}
+.cerrar:hover { background: #2c353d; color: var(--ink); }
+.cerrar:active { box-shadow: var(--nm-hueco); }
+
+.bloque { display: flex; flex-direction: column; gap: 10px; }
+.bloque__t { display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.bloque__t svg { color: var(--ink-3); }
+
+.monto-xl { font-size: 38px; font-weight: 800; letter-spacing: -.05em; line-height: 1.02; }
+
+.datos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dato { padding: 11px 13px; border-radius: var(--r); background: var(--well); box-shadow: var(--nm-hueco); display: flex; flex-direction: column; gap: 3px; }
+.dato--w { grid-column: 1 / -1; }
+.dato__k { font-size: 9.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); }
+.dato__v { font-size: 13.5px; font-weight: 600; letter-spacing: -.018em; }
+
+.chequeo { display: flex; align-items: flex-start; gap: 12px; padding: 13px 14px; border-radius: var(--r-md); border: 1px solid; }
+.chequeo--ok { background: var(--good-dim); border-color: rgba(52,211,153,.32); }
+.chequeo--no { background: var(--bad-dim); border-color: rgba(248,113,113,.32); }
+.chequeo__i { width: 22px; height: 22px; border-radius: 50%; flex: none; margin-top: 1px; display: grid; place-items: center; color: #0d1114; }
+.chequeo--ok .chequeo__i { background: var(--good); }
+.chequeo--no .chequeo__i { background: var(--bad); }
+.chequeo__k { font-size: 13px; font-weight: 700; letter-spacing: -.02em; }
+.chequeo__v { font-size: 11.5px; color: var(--ink-2); margin-top: 2px; line-height: 1.5; }
+
+.nota { font-size: 11.5px; color: var(--ink-3); line-height: 1.55; padding: 11px 13px; border-radius: var(--r); background: var(--well); box-shadow: var(--nm-hueco); border-left: 2px solid var(--accent); }
+
+.turnos { display: flex; flex-direction: column; gap: 11px; }
+.turno { display: flex; flex-direction: column; gap: 4px; max-width: 88%; }
+.turno--agent { align-self: flex-start; }
+.turno--user { align-self: flex-end; align-items: flex-end; }
+.turno__q { font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.burbuja { padding: 10px 13px; border-radius: var(--r-md); font-size: 12.5px; line-height: 1.55; }
+.turno--agent .burbuja { background: var(--accent-dim); border: 1px solid rgba(45,212,191,.2); border-bottom-left-radius: 4px; }
+.turno--user .burbuja { background: var(--surface-2); border: 1px solid var(--borde); border-bottom-right-radius: 4px; }
+
+.fases { display: flex; flex-direction: column; }
+.fase { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 2px 12px; }
+.fase__m { display: flex; flex-direction: column; align-items: center; grid-row: span 2; }
+.fase__pt { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); margin-top: 5px; flex: none; box-shadow: 0 0 0 3px rgba(45,212,191,.14); }
+.fase__ln { width: 1.5px; flex: 1; background: var(--borde); min-height: 16px; }
+.fase:last-child .fase__ln { display: none; }
+.fase__k { font-size: 12.5px; font-weight: 600; letter-spacing: -.015em; }
+.fase__v { font-size: 11px; color: var(--ink-3); grid-row: span 2; }
+.fase__sp { grid-column: 2; padding-bottom: 12px; }
+
+/* ==========================================================================
+   FORMULARIO
+   ========================================================================== */
+dialog.modal {
+  border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--borde-alto);
+  width: min(430px, 93vw); box-shadow: 0 32px 80px rgba(0,0,0,.7);
+}
+dialog.modal[open] { animation: entraModal .28s cubic-bezier(.2,.78,.3,1); }
+@keyframes entraModal { from { transform: translateY(12px) scale(.98); opacity: 0 } to { transform: none; opacity: 1 } }
+
+.form__head { padding: 22px 24px 0; }
+.form__t { font-size: 19px; font-weight: 800; letter-spacing: -.035em; }
+.form__a { font-size: 12.5px; color: var(--ink-3); margin-top: 5px; line-height: 1.5; }
+.form__c { padding: 18px 24px; display: flex; flex-direction: column; gap: 15px; }
+.campos { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+.campo { display: flex; flex-direction: column; gap: 6px; }
+.campo--w { grid-column: 1 / -1; }
+.campo input {
+  font-family: inherit; font-size: 14px; font-weight: 600; color: var(--ink);
+  padding: 11px 13px; border-radius: var(--r); border: 1px solid var(--borde);
+  background: var(--well); box-shadow: var(--nm-hueco); transition: border-color .16s;
+  color-scheme: dark;
+}
+.campo input:hover { border-color: var(--borde-alto); }
+.campo input:focus-visible { border-color: var(--accent); outline-offset: 0; }
+.campo__n { font-size: 11px; color: var(--ink-3); line-height: 1.45; }
+.campo input.mal { border-color: var(--bad); box-shadow: var(--nm-hueco), 0 0 0 2px rgba(248,113,113,.18); }
+.campo__e {
+  display: flex; align-items: flex-start; gap: 6px;
+  font-size: 11.5px; color: var(--bad); font-weight: 600; line-height: 1.45;
+}
+.campo__e svg { flex: none; margin-top: 2px; }
+
+.ruta-form {
+  display: flex; align-items: center; gap: 9px; padding: 11px 13px; border-radius: var(--r);
+  background: var(--well); box-shadow: var(--nm-hueco); font-size: 12.5px; color: var(--ink-2);
+}
+.ruta-form svg { color: var(--accent); }
+.ruta-form b { color: var(--ink); font-weight: 700; }
+
+.form__p { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--borde); }
+
+.vacio { padding: 32px 18px; text-align: center; font-size: 12.5px; color: var(--ink-3); line-height: 1.65; }
+
+/* ==========================================================================
+   MODO RESOLUCIÓN — switch + vista enfocada
+   ========================================================================== */
+.switch { display: flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch__pista {
+  position: relative; width: 40px; height: 23px; border-radius: 100px; flex: none;
+  background: var(--well); box-shadow: var(--nm-hueco); transition: background .28s;
+}
+.switch__bola {
+  position: absolute; top: 3.5px; left: 3.5px; width: 16px; height: 16px; border-radius: 50%;
+  background: #4d5862; box-shadow: var(--nm-suave);
+  transition: transform .3s cubic-bezier(.3,.85,.3,1), background .28s, box-shadow .28s;
+}
+.switch input:checked + .switch__pista { background: rgba(251,146,60,.16); }
+.switch input:checked + .switch__pista .switch__bola {
+  transform: translateX(17px); background: var(--warn);
+  box-shadow: 0 0 12px rgba(251,146,60,.6), var(--nm-suave);
+}
+.switch input:focus-visible + .switch__pista { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch__txt { font-size: 11.5px; font-weight: 600; color: var(--ink-3); transition: color .28s; }
+.switch input:checked ~ .switch__txt { color: var(--warn); }
+
+/* Al encender, el dashboard entero desaparece: no queda ni un KPI de ruido. */
+#vista-res { display: none; }
+body.foco #vista-dash { display: none; }
+body.foco #vista-res { display: block; flex: 1; min-height: 0; overflow-y: auto; }
+
+.res-wrap {
+  max-width: 1080px; margin: 0 auto; padding: 4px var(--gap) 32px;
+  display: flex; flex-direction: column; gap: 18px;
+  animation: entraRes .38s cubic-bezier(.25,.85,.3,1);
+}
+@keyframes entraRes { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }
+
+.res-top { display: flex; align-items: center; gap: 14px; padding-top: 4px; }
+.res-top__t { font-size: 20px; font-weight: 800; letter-spacing: -.038em; }
+.res-top__s { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+
+.btn-volver {
+  display: inline-flex; align-items: center; gap: 8px; flex: none;
+  padding: 10px 16px 10px 12px; border-radius: var(--r); cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: -.012em;
+  background: var(--surface-2); border: 1px solid var(--borde); color: var(--ink);
+  box-shadow: var(--nm-suave); transition: background .18s, transform .12s;
+}
+.btn-volver:hover { background: #2b343c; }
+.btn-volver:active { box-shadow: var(--nm-hueco); transform: translateY(1px); }
+
+/* Selector de caso: ahora vive dentro de la vista, porque afuera no queda nada */
+.res-casos { display: flex; gap: 9px; flex-wrap: wrap; }
+.caso-chip {
+  display: flex; align-items: center; gap: 9px; padding: 9px 15px; border-radius: 100px;
+  cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 600;
+  background: var(--surface-2); border: 1px solid var(--borde); color: var(--ink-2);
+  box-shadow: var(--nm-suave); transition: color .18s, border-color .18s, background .18s;
+}
+.caso-chip:hover { color: var(--ink); border-color: var(--borde-alto); }
+.caso-chip--activo {
+  color: var(--warn); background: rgba(251,146,60,.1); border-color: var(--warn);
+  box-shadow: 0 0 0 2px rgba(251,146,60,.2), var(--nm-suave);
+}
+.caso-chip__p { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+.res-vacio {
+  text-align: center; padding: 70px 20px; color: var(--ink-3);
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+.res-vacio__i { width: 58px; height: 58px; border-radius: 18px; display: grid; place-items: center; background: var(--well); box-shadow: var(--nm-hueco); color: var(--ink-3); }
+.res-vacio__t { font-size: 16px; font-weight: 700; color: var(--ink-2); letter-spacing: -.025em; }
+.res-vacio__d { font-size: 12.5px; max-width: 46ch; line-height: 1.6; }
+
+.res-alerta {
+  display: flex; gap: 14px; padding: 17px 19px; border-radius: var(--r-md);
+  background: rgba(251,146,60,.085); border: 1px solid rgba(251,146,60,.32); box-shadow: var(--nm-suave);
+}
+.res-alerta__i {
+  width: 40px; height: 40px; border-radius: 12px; flex: none; display: grid; place-items: center;
+  background: rgba(251,146,60,.16); color: var(--warn);
+}
+.res-alerta__t { font-size: 9.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--warn); }
+.res-alerta__q { font-size: 17px; font-weight: 800; letter-spacing: -.032em; line-height: 1.32; margin-top: 4px; }
+.res-alerta__d { font-size: 12.5px; color: var(--ink-2); line-height: 1.55; margin-top: 6px; }
+
+.res-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+
+.res-caja { border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--borde); box-shadow: var(--nm-suave); overflow: hidden; }
+.res-caja__h { display: flex; align-items: center; gap: 7px; padding: 12px 15px 10px; border-bottom: 1px solid var(--borde); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.res-caja__h svg { color: var(--ink-3); }
+.res-caja__b { padding: 14px 15px 15px; display: flex; flex-direction: column; gap: 11px; }
+
+.res-tope { display: flex; align-items: baseline; gap: 9px; }
+.res-tope__v { font-size: 30px; font-weight: 800; letter-spacing: -.05em; color: var(--warn); line-height: 1; }
+.res-tope__k { font-size: 11.5px; color: var(--ink-3); }
+
+.res-chofer { display: flex; align-items: center; gap: 13px; }
+.res-chofer__n { font-size: 15.5px; font-weight: 800; letter-spacing: -.03em; }
+.res-chofer__e { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+.res-tel {
+  display: flex; align-items: center; gap: 9px; padding: 11px 13px; border-radius: var(--r);
+  background: var(--well); box-shadow: var(--nm-hueco);
+}
+.res-tel svg { color: var(--accent); }
+.res-tel__v { font-size: 15px; font-weight: 700; letter-spacing: -.02em; }
+
+/* Mini-historial del caso */
+.res-tl { display: flex; flex-direction: column; }
+.res-ev {
+  display: grid; grid-template-columns: auto auto minmax(0,1fr) auto auto; gap: 3px 13px;
+  align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--borde);
+}
+.res-ev:last-child { border-bottom: 0; }
+.res-ev__h { font-size: 11px; color: var(--ink-3); grid-row: span 2; }
+.res-ev__av { grid-row: span 2; }
+.res-ev__n { font-size: 13px; font-weight: 700; letter-spacing: -.02em; }
+.res-ev__e { grid-column: 3; font-size: 11.5px; color: var(--ink-3); }
+.res-ev__o { grid-row: span 2; font-size: 16px; font-weight: 800; letter-spacing: -.04em; }
+.res-ev__v { grid-row: span 2; }
+.res-ev--sys { grid-template-columns: auto minmax(0,1fr) auto; }
+.res-ev__sys { display: flex; align-items: center; gap: 9px; grid-column: 2; }
+.res-ev__sysi { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; flex: none; background: var(--bad-dim); color: var(--bad); }
+
+.chip-v { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 100px; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; border: 1px solid; white-space: nowrap; }
+.chip-v--no { color: var(--bad); background: var(--bad-dim); border-color: rgba(248,113,113,.32); }
+.chip-v--si { color: var(--good); background: var(--good-dim); border-color: rgba(52,211,153,.32); }
+.chip-v--h  { color: var(--warn); background: var(--warn-dim); border-color: rgba(251,146,60,.32); }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: .01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: .01ms !important;
-  }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 </style>
 </head>
@@ -541,778 +595,1266 @@ body {
 
 <div class="consola">
 
-  <!-- 1 · HEADER: identidad de la operación + estado ---------------------- -->
   <header class="header">
-    <div class="marca">
-      <span class="marca__nombre">Volta</span>
-      <span class="marca__op mono" id="op-id">—</span>
+    <div class="logo">V</div>
+    <div>
+      <div class="marca__n">Volta</div>
+      <div class="marca__s">Centro de operaciones · Textiles Pacífico</div>
     </div>
-
-    <div class="ruta">
-      <span class="ruta__punto" id="op-origen">—</span>
-      <span class="ruta__flecha">→</span>
-      <span class="ruta__punto" id="op-destino">—</span>
-    </div>
-
-    <div class="header__meta">
-      <div class="metrica">
-        <span class="label">Cliente</span>
-        <span class="metrica__valor" id="op-cliente">—</span>
+    <div class="header__der">
+      <div class="chip"><span id="ico-truck"></span><span id="ruta-texto">—</span></div>
+      <div class="reloj">
+        <div class="reloj__h mono" id="reloj-h">—</div>
+        <div class="reloj__f" id="reloj-f">—</div>
       </div>
-      <div class="metrica">
-        <span class="label">Contenedor</span>
-        <span class="metrica__valor mono" id="op-contenedor">—</span>
-      </div>
-      <span class="badge badge--en_curso" id="op-estado">
-        <span class="badge__punto"></span><span id="op-estado-texto">En curso</span>
-      </span>
+      <div id="sw-slot"></div>
     </div>
   </header>
 
+  <div class="principal">
+  <div id="vista-dash">
+  <div class="brief" id="brief"></div>
+
   <div class="cuerpo">
 
-    <!-- COLUMNA IZQUIERDA: mandato (fijo) + historial ------------------- -->
     <div class="columna">
-
-      <!-- 2 · MANDATO -->
-      <section class="panel">
-        <div class="panel__head">
-          <span class="label">Mandato</span>
-          <span class="label mono" id="mandato-id">—</span>
-        </div>
-        <div class="panel__body">
-          <div class="mandato">
-            <div class="dato">
-              <span class="label">Precio tope</span>
-              <span class="dato__valor--grande mono" id="mandato-tope">—</span>
-            </div>
-
-            <div class="regla">
-              <div class="regla__pista">
-                <div class="regla__relleno" id="regla-relleno" style="width: 0%"></div>
-              </div>
-              <div class="regla__pie">
-                <span id="regla-actual">Sin acuerdo aún</span>
-                <span class="mono" id="regla-tope">—</span>
-              </div>
-            </div>
-
-            <hr class="separador">
-
-            <div class="dato">
-              <span class="label">Ventana de retiro</span>
-              <span class="dato__valor" id="mandato-ventana">—</span>
-            </div>
-
-            <div class="dato">
-              <span class="label">Tiempo restante</span>
-              <span class="dato__valor mono" id="mandato-restante">—</span>
-              <span class="dato__nota" id="mandato-vence">—</span>
-            </div>
-
-            <div class="dato" id="condiciones-bloque" hidden>
-              <span class="label">Condiciones</span>
-              <ul class="condiciones" id="mandato-condiciones"></ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 6 · HISTORIAL DE LLAMADAS -->
       <section class="panel panel--crece">
         <div class="panel__head">
-          <span class="label">Llamadas anteriores</span>
-          <span class="label" id="historial-total">0</span>
+          <div class="head__izq"><span id="ico-mandatos"></span><span class="label">Mandatos</span></div>
+          <span class="cuenta" id="mandatos-total">0</span>
         </div>
         <div class="panel__body panel__body--flush">
-          <ul class="historial" id="historial"></ul>
-        </div>
-      </section>
-
-    </div>
-
-    <!-- COLUMNA CENTRO: llamada en vivo -------------------------------- -->
-    <div class="columna">
-      <!-- 3 · TRANSCRIPCIÓN EN VIVO -->
-      <section class="panel panel--crece">
-        <div class="panel__head">
-          <span class="label">Llamada en curso · <span id="llamada-contraparte">—</span></span>
-          <span class="linea-vivo" id="linea-vivo" hidden>
-            <span class="linea-vivo__punto"></span>En línea<span class="mono" id="llamada-duracion"></span>
-          </span>
-        </div>
-        <div class="panel__body panel__body--flush" id="transcripcion-scroll">
-          <div class="transcripcion" id="transcripcion"></div>
+          <div style="padding: 0 17px 12px">
+            <button class="btn-nuevo" id="abrir-form"><span id="ico-mas"></span>Nuevo mandato</button>
+          </div>
+          <div class="mandatos" id="mandatos"></div>
+          <div class="vacio" id="mandatos-vacio" hidden>Sin mandatos cargados.<br>Cargá el primero para que Volta empiece a llamar.</div>
         </div>
       </section>
     </div>
 
-    <!-- COLUMNA DERECHA: escalación + commitments ---------------------- -->
     <div class="columna">
-
-      <!-- 5 · ESCALACIÓN (solo si hay trigger) -->
-      <section class="panel panel--escalacion" id="panel-escalacion" hidden>
-        <div class="panel__head">
-          <span class="label">Escalado a un humano</span>
-          <span class="label" id="escalacion-total">0</span>
-        </div>
-        <div class="panel__body" id="escalaciones"></div>
-      </section>
-
-      <!-- 4 · COMMITMENTS -->
       <section class="panel panel--crece">
         <div class="panel__head">
-          <span class="label">Commitments</span>
+          <div class="head__izq"><span id="ico-commits"></span><span class="label">Commitments</span></div>
           <span class="label" id="commitments-resumen">—</span>
         </div>
         <div class="panel__body panel__body--flush">
           <table class="tabla">
-            <thead>
-              <tr>
-                <th>Carrier</th>
-                <th>Monto</th>
-                <th>Retiro</th>
-                <th>Estado</th>
-              </tr>
-            </thead>
+            <thead><tr id="tabla-head"></tr></thead>
             <tbody id="commitments"></tbody>
           </table>
-          <div class="vacio" id="commitments-vacio">Todavía no se discutió ninguna oferta.</div>
+          <div class="vacio" id="commitments-vacio">Todavía no se cerró ningún acuerdo.<br>Los commitments aparecen acá apenas Volta los negocia.</div>
         </div>
       </section>
+    </div>
 
+    <div class="columna">
+      <section class="panel panel--esc" id="panel-esc" hidden>
+        <div class="panel__head">
+          <div class="head__izq"><span id="ico-alerta"></span><span class="label">Escalado a un humano</span></div>
+        </div>
+        <div class="panel__body" id="escalaciones"></div>
+      </section>
+
+      <section class="panel panel--crece">
+        <div class="panel__head">
+          <div class="head__izq"><span id="ico-historial"></span><span class="label">Historial de llamadas</span></div>
+          <span class="cuenta" id="historial-total">0</span>
+        </div>
+        <div class="panel__body panel__body--flush">
+          <div id="historial"></div>
+          <div class="vacio" id="historial-vacio">Sin llamadas cerradas todavía.</div>
+        </div>
+      </section>
     </div>
 
   </div>
+  </div><!-- /vista-dash -->
+
+  <!-- Vista aislada: solo el caso escalado, sin nada del dashboard alrededor -->
+  <section id="vista-res"><div class="res-wrap" id="res-body"></div></section>
+  </div><!-- /principal -->
 </div>
+
+<dialog class="drawer" id="drawer">
+  <div class="drawer__head">
+    <div>
+      <div class="drawer__t" id="drawer-t">—</div>
+      <div class="drawer__s" id="drawer-s">—</div>
+    </div>
+    <button class="cerrar" id="drawer-cerrar" aria-label="Cerrar"><span id="ico-x"></span></button>
+  </div>
+  <div class="drawer__body" id="drawer-body"></div>
+</dialog>
+
+<dialog class="modal" id="form-mandato">
+  <!-- novalidate: la validación la hacemos nosotros para poder dar mensajes
+       propios en vez de los burbujeos genéricos del navegador. -->
+  <form method="dialog" id="form" novalidate>
+    <div class="form__head">
+      <div class="form__t">Autorizar un mandato</div>
+      <div class="form__a">Volta busca transportista y negocia dentro de estos límites. No puede comprometer nada fuera de acá.</div>
+    </div>
+    <div class="form__c">
+      <div class="ruta-form"><span id="ico-truck2"></span><span>Ruta fija: <b id="ruta-form">—</b></span></div>
+      <div class="campos">
+        <div class="campo campo--w">
+          <label class="label" for="f-dia">Día de retiro</label>
+          <input id="f-dia" name="dia" type="date" required>
+          <span class="campo__e" id="e-dia" hidden></span>
+        </div>
+        <div class="campo">
+          <label class="label" for="f-desde">Franja desde</label>
+          <input id="f-desde" name="desde" type="time" value="08:00" required>
+        </div>
+        <div class="campo">
+          <label class="label" for="f-hasta">Franja hasta</label>
+          <input id="f-hasta" name="hasta" type="time" value="12:00" required>
+        </div>
+        <div class="campo campo--w" style="margin-top:-6px">
+          <span class="campo__e" id="e-hora" hidden></span>
+        </div>
+        <div class="campo campo--w">
+          <label class="label" for="f-tope">Precio máximo (MXN)</label>
+          <input id="f-tope" name="tope" type="number" min="0" step="1" value="9000" class="mono" required>
+          <span class="campo__n">Número entero, sin negativos. Volta no puede comprometer un peso por encima.</span>
+          <span class="campo__e" id="e-tope" hidden></span>
+        </div>
+      </div>
+    </div>
+    <div class="form__p">
+      <button type="button" class="btn btn--fantasma" id="cancelar">Cancelar</button>
+      <button type="submit" class="btn btn--primario">Autorizar y empezar a llamar</button>
+    </div>
+  </form>
+</dialog>
 
 <script>
 /* ==========================================================================
    CAPA DE DATOS
    --------------------------------------------------------------------------
-   Lo único que hay que tocar para conectar el backend real es `fetchState()`.
-   El resto del archivo consume el objeto que devuelve, y su forma es la misma
-   que la de los modelos de `backend/app/models.py` (Operacion, Mandato,
-   Commitment, CallLogEntry) — los nombres de campo coinciden a propósito.
+   Lo único que hay que tocar para conectar el backend está en este bloque.
+   Mandato / Commitment / CallLogEntry copian `backend/app/models.py`.
+   Tres cosas NO existen en el backend y están mockeadas acá:
+     1. CARRIERS — no hay modelo `Carrier` ni endpoint. Futuro: GET /carriers.
+     2. Cotizaciones — el roadmap nombra `request_quote`, el backend no la
+        tiene. Una cotización NO es un commitment: registrar uno por candidato
+        haría que el guardrail rechace el 2º y 3º como duplicado (guardrail.py:77).
+     3. Franja horaria — `ventana_inicio/fin` son `date` sin hora; hoy viaja en
+        `condiciones`. El guardrail del backend todavía NO la valida.
    ========================================================================== */
 
-const USAR_BACKEND = false;                        // ponelo en true cuando la API esté arriba
+const USAR_BACKEND = false;
 const API = "http://localhost:8000";
-const OPERACION_ID = "op-demo-001";                // reemplazar por el id real
+const RUTA = { origen: "Manzanillo", destino: "Guadalajara", cliente: "Textiles Pacífico" };
 
-/**
- * Devuelve el estado completo que el dashboard sabe dibujar.
- *
- * {
- *   operacion:    Operacion,
- *   mandato:      Mandato,
- *   commitments:  Commitment[],
- *   llamadas:     CallLogEntry[],   // llamadas cerradas (historial)
- *   llamada_actual: { call_id, contraparte, inicio, turnos: [...] } | null,
- *   escalaciones: [{ id, trigger, titulo, detalle, contraparte, call_id, ts, asignado_a }]
- * }
- *
- * Los `turnos` usan los mismos roles que emite `voice/public/client.js`:
- * "agent" (Volta) y "user" (la contraparte) — ver `onTranscript(role, text)`.
- */
 async function fetchState() {
-  if (!USAR_BACKEND) return estadoMock();
-
-  const [operacion, commitments] = await Promise.all([
-    fetch(`${API}/operaciones/${OPERACION_ID}`).then(r => r.json()),
-    fetch(`${API}/operaciones/${OPERACION_ID}/commitments`).then(r => r.json()),
-  ]);
-  const mandato = await fetch(`${API}/mandatos/${operacion.mandato_id}`).then(r => r.json());
-
-  // Pendientes de backend (Bloque 4): no hay endpoint de listado de llamadas
-  // ni de transcripción todavía. Cuando existan, se reemplazan estas dos líneas.
-  const llamadas = [];
-  const llamada_actual = null;
-
-  return {
-    operacion,
-    mandato,
-    commitments,
-    llamadas,
-    llamada_actual,
-    // El backend marca la escalación por llamada (CallLogEntry.escalado /
-    // .motivo_escalacion). Acá se aplana a una lista para el panel.
-    escalaciones: llamadas
-      .filter(l => l.escalado)
-      .map(l => ({
-        id: l.id,
-        trigger: "escalado",
-        titulo: l.motivo_escalacion ?? "Escalado",
-        detalle: l.resumen,
-        contraparte: l.contraparte,
-        call_id: l.call_id,
-        ts: l.fin ?? l.inicio,
-        asignado_a: "Mesa de operaciones",
-      })),
-  };
+  if (!USAR_BACKEND) return estado;
+  throw new Error("Faltan GET /mandatos y GET /llamadas en el backend");
 }
 
-/* --------------------------------------------------------------------------
-   MOCK — caso mínimo del brief (Textiles Pacífico, Manzanillo → Guadalajara).
-   Se borra entero cuando USAR_BACKEND pase a true.
-   -------------------------------------------------------------------------- */
-
-const HOY = "2026-08-29";
-
-const estado = {
-  operacion: {
-    id: "op-demo-001",
-    cliente: "Textiles Pacífico",
-    contenedor_id: "MSCU1234567",
-    puerto_origen: "Manzanillo",
-    destino: "Guadalajara",
-    eta: "2026-08-30",
-    mandato_id: "mdt-4b1c9e",
-  },
-
-  mandato: {
-    id: "mdt-4b1c9e",
-    operacion_id: "op-demo-001",
-    tope_precio: 9000,
-    ventana_inicio: "2026-08-28",
-    ventana_fin: "2026-08-30",
-    condiciones: ["Un solo retiro por operación", "Carrier con seguro de carga vigente"],
-    vigente_hasta: new Date(Date.now() + 5 * 3600e3 + 42 * 60e3).toISOString(),
-    revocado: false,
-    revocado_en: null,
-  },
-
-  commitments: [],
-
-  llamadas: [
-    {
-      id: "log-01", operacion_id: "op-demo-001", call_id: "call-0912",
-      direccion: "saliente", contraparte: "Fletes Bahía",
-      inicio: `${HOY}T09:12:00Z`, fin: `${HOY}T09:16:00Z`,
-      resumen: "Sin disponibilidad de camión para la ventana.",
-      commitments_ids: [], escalado: false, motivo_escalacion: null,
-    },
-    {
-      id: "log-02", operacion_id: "op-demo-001", call_id: "call-0934",
-      direccion: "saliente", contraparte: "Autotransportes Colima",
-      inicio: `${HOY}T09:34:00Z`, fin: `${HOY}T09:41:00Z`,
-      resumen: "Cotizó $10.400 — sobre el tope. No se cerró.",
-      commitments_ids: [], escalado: false, motivo_escalacion: null,
-    },
-  ],
-
-  llamada_actual: {
-    call_id: "call-1002",
-    contraparte: "Transportes del Norte",
-    inicio: new Date().toISOString(),
-    turnos: [
-      { role: "agent", text: "Buenos días, le hablo de Textiles Pacífico. Necesito un camión para retirar un contenedor en Manzanillo con destino Guadalajara.", ts: hace(4 * 60) },
-      { role: "user",  text: "Buen día. Sí, tenemos unidad. ¿Para qué día lo necesitan?", ts: hace(3 * 60 + 32) },
-      { role: "agent", text: "El retiro sería entre el 28 y el 30 de agosto. Idealmente el jueves 29.", ts: hace(3 * 60 + 4) },
-      { role: "user",  text: "Jueves 29 lo podemos hacer. El flete nos queda en nueve mil doscientos pesos.", ts: hace(2 * 60 + 30) },
-    ],
-  },
-
-  escalaciones: [],
-};
-
-function hace(segundos) {
-  return new Date(Date.now() - segundos * 1000).toISOString();
+async function crearMandato(d) {
+  if (!USAR_BACKEND) return altaMandatoLocal(d);
+  const op = await fetch(`${API}/operaciones`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cliente: RUTA.cliente, contenedor_id: d.contenedor,
+      puerto_origen: RUTA.origen, destino: RUTA.destino }),
+  }).then(r => r.json());
+  return fetch(`${API}/mandatos`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ operacion_id: op.id, tope_precio: d.tope,
+      ventana_inicio: d.dia, ventana_fin: d.dia,
+      condiciones: [`Franja horaria ${d.desde}–${d.hasta}`],
+      vigente_hasta: new Date(Date.now() + 12 * 3600e3).toISOString() }),
+  }).then(r => r.json());
 }
 
-function estadoMock() {
-  return estado;
-}
-
-/* --------------------------------------------------------------------------
-   GUION DE LA DEMO
-   --------------------------------------------------------------------------
-   Eventos con offset en segundos desde que carga la página. Determinístico a
-   propósito: frente a los jueces la demo tiene que contar siempre la misma
-   historia — se negocia por debajo del tope, se confirma, y después el carrier
-   intenta subir el precio y el guardrail lo frena y escala.
-   -------------------------------------------------------------------------- */
-
-const GUION = [
-  { t: 4,  tipo: "turno", role: "agent", text: "Nueve mil doscientos me queda por encima de lo autorizado. Puedo cerrar hasta nueve mil. ¿Lo podemos ajustar?" },
-  { t: 11, tipo: "turno", role: "user",  text: "Mirá... si el retiro es temprano, a las ocho de la mañana, te lo dejo en ocho mil quinientos." },
-  { t: 17, tipo: "turno", role: "agent", text: "Perfecto. Confirmo: ocho mil quinientos pesos, retiro el jueves 29 de agosto a las ocho, contenedor MSCU1234567. ¿Correcto?" },
-  { t: 23, tipo: "turno", role: "user",  text: "Correcto, así queda." },
-
-  { t: 27, tipo: "commitment", commitment: {
-      id: "cmt-7a2f11", operacion_id: "op-demo-001", mandato_id: "mdt-4b1c9e",
-      call_id: "call-1002", contraparte: "Transportes del Norte", tipo: "reserva",
-      monto: 8500, fecha_retiro: "2026-08-29",
-      detalle: "Retiro 08:00 — contenedor MSCU1234567",
-  }},
-
-  { t: 33, tipo: "turno", role: "agent", text: "Reserva confirmada. Le mando la orden por escrito en unos minutos. Gracias." },
-
-  // El giro: el carrier vuelve a llamar para subir el precio.
-  { t: 41, tipo: "turno", role: "user",  text: "Che, una cosa más. Me avisan de operaciones que ese contenedor pesa más de lo declarado. Hay un cargo adicional de dos mil setecientos." },
-  { t: 48, tipo: "turno", role: "agent", text: "Eso llevaría el total a once mil doscientos. Está fuera de lo que tengo autorizado a acordar." },
-  { t: 54, tipo: "turno", role: "user",  text: "Es la tarifa, o no sale el camión. Pasame con tu supervisor así lo arreglamos entre nosotros." },
-
-  { t: 59, tipo: "commitment", commitment: {
-      id: "cmt-9c4d02", operacion_id: "op-demo-001", mandato_id: "mdt-4b1c9e",
-      call_id: "call-1002", contraparte: "Transportes del Norte", tipo: "reserva",
-      monto: 11200, fecha_retiro: "2026-08-29",
-      detalle: "Cargo adicional por sobrepeso declarado en llamada",
-  }},
-
-  { t: 63, tipo: "escalacion", escalacion: {
-      id: "esc-01",
-      trigger: "oferta fuera de mandato",
-      titulo: "El carrier exige $11.200, por encima del tope de $9.000",
-      detalle: "El monto revisado excede el tope del mandato en $2.200. Volta no cerró el acuerdo y mantiene vigente la reserva anterior de $8.500.",
-      contraparte: "Transportes del Norte",
-      call_id: "call-1002",
-      asignado_a: "Mesa de operaciones",
-  }},
-
-  { t: 67, tipo: "escalacion", escalacion: {
-      id: "esc-02",
-      trigger: "pedido de humano",
-      titulo: "La contraparte pidió hablar con un supervisor",
-      detalle: "Pedido explícito de escalar por fuera del agente. La llamada queda en espera de intervención humana.",
-      contraparte: "Transportes del Norte",
-      call_id: "call-1002",
-      asignado_a: "Mesa de operaciones",
-  }},
-
-  { t: 70, tipo: "turno", role: "agent", text: "No puedo aprobar ese monto. Le paso la llamada a un responsable de la operación, aguárdeme en línea." },
-
-  { t: 74, tipo: "estado", estado_operacion: "escalado" },
+const CARRIERS = [
+  { id:"tpa", nombre:"Transportes Pacífico",   chofer:"Diego Salas",    tel:"+52 314 118 4402", score:4.2, viajes:38,  tarifa:8200,  flex:0.03 },
+  { id:"trn", nombre:"Transportes del Norte",  chofer:"Juan Pérez",     tel:"+52 314 226 7719", score:4.7, viajes:112, tarifa:8600,  flex:0.06 },
+  { id:"cvl", nombre:"Carga Veloz",            chofer:"Sofía Nava",     tel:"+52 33 3841 2260", score:4.3, viajes:64,  tarifa:8750,  flex:0.07 },
+  { id:"fba", nombre:"Fletes Bahía",           chofer:"Ramón Ortiz",    tel:"+52 314 337 9080", score:4.4, viajes:71,  tarifa:8900,  flex:0.04 },
+  { id:"acl", nombre:"Autotransportes Colima", chofer:"Marta Ruiz",     tel:"+52 312 445 1123", score:4.5, viajes:95,  tarifa:9400,  flex:0.09 },
+  { id:"occ", nombre:"Occidente Cargo",        chofer:"Hugo Delgado",   tel:"+52 33 3612 8845", score:4.1, viajes:52,  tarifa:9100,  flex:0.05 },
+  { id:"lgm", nombre:"Logística Manzanillo",   chofer:"Elena Cárdenas", tel:"+52 314 554 3301", score:4.6, viajes:88,  tarifa:10200, flex:0.12 },
+  { id:"exp", nombre:"Transportes Express",    chofer:"Beto Miranda",   tel:"+52 314 660 2214", score:3.9, viajes:23,  tarifa:11800, flex:0.02 },
 ];
 
-/* ==========================================================================
-   GUARDRAIL (espejo de cliente)
-   --------------------------------------------------------------------------
-   Réplica de `backend/app/guardrail.py` para poder DIBUJAR los chequeos por
-   separado en cada fila. La decisión que vale es siempre la del backend
-   (`commitment.aprobado`); esto solo explica visualmente el porqué.
-   ========================================================================== */
+const estado = { mandatos: [], commitments: [], llamadas: [], escalaciones: [] };
+let seqMandato = 0, seqCall = 0, seqCommit = 0;
 
-function chequearGuardrail(commitment, mandato) {
+/* ==========================================================================
+   GUARDRAIL (espejo de cliente) — réplica de backend/app/guardrail.py, para
+   poder dibujar cada chequeo por separado. La decisión que vale es la del
+   backend (`commitment.aprobado`).
+   ========================================================================== */
+function chequearGuardrail(c, m) {
   return [
-    {
-      etiqueta: `Monto ${moneda(commitment.monto)} ≤ tope ${moneda(mandato.tope_precio)}`,
-      pasa: commitment.monto <= mandato.tope_precio,
-      motivo: `monto ${moneda(commitment.monto)} excede el tope del mandato (${moneda(mandato.tope_precio)})`,
-    },
-    {
-      etiqueta: `Retiro ${fechaCorta(commitment.fecha_retiro)} dentro de la ventana`,
-      pasa: commitment.fecha_retiro >= mandato.ventana_inicio
-         && commitment.fecha_retiro <= mandato.ventana_fin,
-      motivo: `fecha ${commitment.fecha_retiro} fuera de la ventana permitida `
-            + `(${mandato.ventana_inicio} a ${mandato.ventana_fin})`,
-    },
-    {
-      etiqueta: mandato.revocado ? "Mandato revocado" : "Mandato vigente y no revocado",
-      pasa: !mandato.revocado && new Date(mandato.vigente_hasta) > new Date(),
-      motivo: mandato.revocado ? "mandato revocado" : "mandato expirado",
-    },
+    { k: "Monto dentro del tope",
+      pasa: c.monto <= m.tope_precio,
+      v: `${moneda(c.monto)} contra un tope de ${moneda(m.tope_precio)}`,
+      motivo: `monto ${moneda(c.monto)} excede el tope del mandato (${moneda(m.tope_precio)})` },
+    { k: "Retiro dentro de la franja",
+      pasa: c.fecha_retiro === m.dia && c.hora_retiro >= m.desde && c.hora_retiro <= m.hasta,
+      v: `${fechaLarga(c.fecha_retiro)} ${c.hora_retiro}, autorizado ${m.desde}–${m.hasta}`,
+      motivo: `retiro ${c.fecha_retiro} ${c.hora_retiro} fuera de la franja autorizada (${m.dia} de ${m.desde} a ${m.hasta})` },
   ];
 }
 
 /* ==========================================================================
-   FORMATO
+   FORMATO Y HELPERS
    ========================================================================== */
+const MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+const MESES_L = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+const DIAS = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
 
-const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-
-const moneda = n => "$" + n.toLocaleString("es-MX");
-
-function fechaCorta(iso) {                                  // "2026-08-29" → "29 ago"
-  const [, m, d] = iso.split("-");
-  return `${Number(d)} ${MESES[Number(m) - 1]}`;
+const moneda = n => "$" + Math.round(n).toLocaleString("es-MX");
+const fechaCorta = iso => { const [, m, d] = iso.split("-"); return `${Number(d)} ${MESES[Number(m)-1]}`; };
+function fechaLarga(iso) {
+  const [a, m, d] = iso.split("-").map(Number);
+  return `${DIAS[new Date(a, m-1, d).getDay()]} ${d} de ${MESES_L[m-1]}`;
 }
-
-function hora(iso) {                                        // ISO → "10:04"
-  return new Date(iso).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false });
+const horaDe = ms => new Date(ms).toLocaleTimeString("es-MX", { hour:"2-digit", minute:"2-digit", hour12:false });
+function cronometro(desde, hasta) {
+  const s = Math.max(0, Math.floor(((hasta ?? Date.now()) - desde) / 1000));
+  return `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 }
-
-function duracion(desdeIso) {                               // ISO → "04:12"
-  const s = Math.max(0, Math.floor((Date.now() - new Date(desdeIso)) / 1000));
-  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-}
-
-function restante(hastaIso) {                               // ISO → "5h 42m"
-  const ms = new Date(hastaIso) - Date.now();
-  if (ms <= 0) return "Vencido";
-  const h = Math.floor(ms / 3600e3);
-  const m = Math.floor((ms % 3600e3) / 60e3);
-  return h > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`;
-}
+const iniciales = n => n.split(/\s+/).slice(0, 2).map(p => p[0]).join("").toUpperCase();
 
 const $ = id => document.getElementById(id);
+const texto = (id, v) => { $(id).textContent = v; };
 
-function texto(id, valor) { $(id).textContent = valor; }
+function el(tag, cls, txt) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (txt !== undefined) n.textContent = txt;
+  return n;
+}
+
+/* -- Iconos (trazo, 24x24) ------------------------------------------------- */
+const ICONOS = {
+  truck:   '<path d="M5 17H3v-6l2-5h9v11M14 17h6v-6l-3-5h-3"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+  target:  '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+  phone:   '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>',
+  check:   '<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="m9 11 3 3 10-10"/>',
+  trend:   '<path d="m23 6-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/>',
+  alerta:  '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  reloj:   '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
+  wallet:  '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>',
+  chevron: '<path d="m9 18 6-6-6-6"/>',
+  flecha:  '<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>',
+  arribaD: '<path d="M7 17 17 7"/><path d="M7 7h10v10"/>',
+  abajoI:  '<path d="M17 7 7 17"/><path d="M17 17H7V7"/>',
+  x:       '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  mas:     '<path d="M12 5v14"/><path d="M5 12h14"/>',
+  user:    '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  dinero:  '<path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  actividad:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  hist:    '<path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/>',
+  doc:     '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+  escudo:  '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  chat:    '<path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.4 8.4 0 0 1 8.4-9 8.4 8.4 0 0 1 8.6 9z"/>',
+};
+
+function ico(nombre, size = 16, cls) {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  s.setAttribute("width", size); s.setAttribute("height", size);
+  s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("fill", "none");
+  s.setAttribute("stroke", "currentColor"); s.setAttribute("stroke-width", "2");
+  s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round");
+  s.setAttribute("aria-hidden", "true");
+  if (cls) s.setAttribute("class", cls);
+  s.innerHTML = ICONOS[nombre] ?? "";
+  return s;
+}
+
+/* -- Avatar con iniciales -------------------------------------------------- */
+const TINTES = [
+  ["#3b4a5a", "#c5d8ec"], ["#4a3f56", "#dcc9ec"], ["#3f5148", "#c6e5d3"],
+  ["#55463a", "#eed9c2"], ["#3a4d55", "#c4e2ec"], ["#4f3f42", "#efcdd0"],
+];
+function avatar(nombre, chico) {
+  const h = [...nombre].reduce((a, c) => a + c.charCodeAt(0), 0) % TINTES.length;
+  const [bg, fg] = TINTES[h];
+  const a = el("div", "av" + (chico ? " av--sm" : ""), iniciales(nombre));
+  a.style.background = bg;
+  a.style.color = fg;
+  return a;
+}
+
+/* ==========================================================================
+   SPARKLINE — ahorro acumulado. Datos reales: un punto por cada commitment
+   aprobado, arrancando en 0. Serie única, así que no lleva leyenda.
+   ========================================================================== */
+function sparkline(serie, w = 104, h = 30) {
+  if (serie.length < 2) return null;
+  const max = Math.max(...serie), min = Math.min(...serie);
+  const rango = max - min || 1;
+  const px = i => (i / (serie.length - 1)) * (w - 6) + 3;
+  const py = v => h - 4 - ((v - min) / rango) * (h - 9);
+  const pts = serie.map((v, i) => [px(i), py(v)]);
+  const linea = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "spark"); svg.setAttribute("width", "100%");
+  svg.setAttribute("height", h); svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.setAttribute("preserveAspectRatio", "none"); svg.setAttribute("aria-hidden", "true");
+
+  const defs = document.createElementNS(NS, "defs");
+  defs.innerHTML = `<linearGradient id="gspark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#34d399" stop-opacity=".34"/>
+      <stop offset="100%" stop-color="#34d399" stop-opacity="0"/></linearGradient>`;
+  svg.appendChild(defs);
+
+  const area = document.createElementNS(NS, "path");
+  area.setAttribute("d", `${linea} L${w - 3},${h} L3,${h} Z`);
+  area.setAttribute("fill", "url(#gspark)");
+  svg.appendChild(area);
+
+  const path = document.createElementNS(NS, "path");
+  path.setAttribute("d", linea); path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "#34d399"); path.setAttribute("stroke-width", "2");
+  path.setAttribute("stroke-linecap", "round"); path.setAttribute("stroke-linejoin", "round");
+  svg.appendChild(path);
+
+  // Punto final destacado, con anillo del color de la superficie
+  const fin = pts[pts.length - 1];
+  const anillo = document.createElementNS(NS, "circle");
+  anillo.setAttribute("cx", fin[0]); anillo.setAttribute("cy", fin[1]);
+  anillo.setAttribute("r", "4.5"); anillo.setAttribute("fill", "#1f252b");
+  svg.appendChild(anillo);
+  const punto = document.createElementNS(NS, "circle");
+  punto.setAttribute("cx", fin[0]); punto.setAttribute("cy", fin[1]);
+  punto.setAttribute("r", "2.6"); punto.setAttribute("fill", "#34d399");
+  svg.appendChild(punto);
+
+  return svg;
+}
+
+/* ==========================================================================
+   ALTA DE MANDATO Y NEGOCIACIÓN
+   ========================================================================== */
+let sucio = true;
+const ensuciar = () => { sucio = true; };
+
+function altaMandatoLocal(d) {
+  const m = {
+    id: `MDT-${String(++seqMandato).padStart(3, "0")}`,
+    operacion_id: `op-${String(seqMandato).padStart(3, "0")}`,
+    contenedor: d.contenedor ?? ("MSCU" + Math.floor(1000000 + Math.random() * 8999999)),
+    dia: d.dia, desde: d.desde, hasta: d.hasta, tope_precio: d.tope,
+    estado: "evaluando", creado_en: Date.now(),
+    llamadas: [], cotizaciones: [], commitment_id: null,
+  };
+  estado.mandatos.push(m);
+  ensuciar();
+  setTimeout(() => elegirYLlamar(m), 2200);
+  return m;
+}
+
+const rankear = () => CARRIERS
+  .map(c => ({ carrier: c, esperado: Math.round(c.tarifa * (1 - c.flex)) }))
+  .sort((a, b) => (a.esperado - b.esperado) || (b.carrier.score - a.carrier.score))
+  .slice(0, 3);
+
+function elegirYLlamar(m) {
+  m.estado = "llamando";
+  m.candidatos = rankear();
+  ensuciar();
+  m.candidatos.forEach((c, i) => setTimeout(() => abrirLlamada(m, c.carrier), i * 1900));
+}
+
+function abrirLlamada(m, carrier) {
+  const ll = {
+    call_id: `call-${String(++seqCall).padStart(4, "0")}`, mandato_id: m.id,
+    carrier, chofer: carrier.chofer, direccion: "saliente", inicio: Date.now(),
+    fase: "marcando", oferta: null, resumen: "Marcando…",
+    turnos: [], fases: [{ k: "Marcando", ts: Date.now() }], pide_humano: false,
+  };
+  m.llamadas.push(ll);
+  ensuciar();
+
+  setTimeout(() => {
+    ll.fase = "negociando";
+    ll.fases.push({ k: "Atendió", ts: Date.now() });
+    di(ll, "agent", `Buenas, le hablo de ${RUTA.cliente}. Necesito un camión de ${RUTA.origen} a ${RUTA.destino} el ${fechaLarga(m.dia)}, retiro entre ${m.desde} y ${m.hasta}.`);
+    di(ll, "user", "Déjeme ver la disponibilidad… sí, tengo unidad para esa franja.");
+    ensuciar();
+    setTimeout(() => cotizar(m, ll), 2600);
+  }, 1700);
+}
+
+function cotizar(m, ll) {
+  ll.oferta = ll.carrier.tarifa;
+  ll.resumen = "Cotiza inicial";
+  ll.fases.push({ k: "Cotizó", ts: Date.now() });
+  di(ll, "user", `Por esa ruta le queda en ${moneda(ll.carrier.tarifa)}.`);
+  ensuciar();
+  setTimeout(() => negociar(m, ll), 2800);
+}
+
+function negociar(m, ll) {
+  const piso = Math.round(ll.carrier.tarifa * (1 - ll.carrier.flex));
+  di(ll, "agent", `Tengo autorizado hasta ${moneda(m.tope_precio)}. ¿Lo podemos ajustar?`);
+  ll.fases.push({ k: "Contraoferta de Volta", ts: Date.now() });
+  ll.oferta = piso;
+
+  if (piso <= m.tope_precio) {
+    ll.resumen = "Acepta la contraoferta";
+    di(ll, "user", `Mire… se lo dejo en ${moneda(piso)} y cerramos.`);
+    di(ll, "agent", `Perfecto. Confirmo ${moneda(piso)}, retiro ${fechaLarga(m.dia)} a las ${m.desde}. Le paso el contenedor ${m.contenedor} para la orden.`);
+  } else {
+    ll.resumen = "No baja del piso";
+    di(ll, "user", `No puedo bajar de ${moneda(piso)}, es mi costo.`);
+    di(ll, "agent", `Entiendo, pero ${moneda(piso)} está por encima de lo que tengo autorizado. No puedo comprometerlo.`);
+    if (piso > m.tope_precio * 1.2) {
+      ll.pide_humano = true;
+      di(ll, "user", "Entonces pasame con alguien que pueda decidir, con vos no llegamos.");
+      di(ll, "agent", "No puedo aprobar ese monto. Lo derivo a un responsable de la operación.");
+    }
+  }
+  ensuciar();
+  setTimeout(() => cerrarLlamada(m, ll), 2700);
+}
+
+const di = (ll, role, text) => ll.turnos.push({ role, text, ts: Date.now() });
+
+function cerrarLlamada(m, ll) {
+  const dentro = ll.oferta <= m.tope_precio;
+  ll.fase = dentro ? "cerrada" : "rechazada";
+  ll.fin = Date.now();
+  ll.fases.push({ k: dentro ? "Cotización en firme" : "Cerró sin acuerdo", ts: ll.fin });
+  ll.resumen = dentro ? `Cotizó ${moneda(ll.oferta)}` : `${moneda(ll.oferta)} — sobre el tope`;
+
+  estado.llamadas.push({ ...ll, id: ll.call_id, contraparte: ll.carrier.nombre,
+    escalado: ll.pide_humano,
+    motivo_escalacion: ll.pide_humano ? "La contraparte pidió hablar con un humano" : null });
+
+  m.llamadas = m.llamadas.filter(x => x !== ll);
+  m.cotizaciones.push({ carrier: ll.carrier, oferta: ll.oferta, dentro, pide_humano: ll.pide_humano, call_id: ll.call_id });
+  ensuciar();
+
+  if (m.llamadas.length === 0 && m.cotizaciones.length >= (m.candidatos?.length ?? 3)) decidir(m);
+}
+
+function decidir(m) {
+  const viables = m.cotizaciones.filter(q => q.dentro).sort((a, b) => a.oferta - b.oferta);
+
+  if (viables.length === 0) {
+    const mejor = [...m.cotizaciones].sort((a, b) => a.oferta - b.oferta)[0];
+    registrarCommitment(m, mejor);
+    escalar(m, "oferta fuera de mandato",
+      `Ningún transportista bajó del tope de ${moneda(m.tope_precio)}`,
+      `La mejor cotización fue ${moneda(mejor.oferta)} de ${mejor.carrier.nombre}, ${moneda(mejor.oferta - m.tope_precio)} por encima del mandato. Volta no comprometió nada.`);
+    m.estado = "escalado";
+    ensuciar();
+    return;
+  }
+
+  const ganador = viables[0];
+  registrarCommitment(m, ganador);
+  const pidio = m.cotizaciones.find(q => q.pide_humano);
+  if (pidio) {
+    escalar(m, "pedido de humano",
+      `${pidio.carrier.nombre} pidió hablar con un supervisor`,
+      `Se reservó igual con ${ganador.carrier.nombre} por ${moneda(ganador.oferta)}, dentro del mandato. El pedido queda para revisión humana.`);
+    m.estado = "escalado";
+  } else {
+    m.estado = "cerrado";
+  }
+  ensuciar();
+}
+
+function registrarCommitment(m, cot) {
+  const c = {
+    id: `CMT-${String(++seqCommit).padStart(3, "0")}`,
+    mandato_id: m.id, operacion_id: m.operacion_id, call_id: cot.call_id,
+    contraparte: cot.carrier.nombre, carrier: cot.carrier, chofer: cot.carrier.chofer,
+    tipo: "reserva", monto: cot.oferta, fecha_retiro: m.dia, hora_retiro: m.desde,
+    creado_en: Date.now(), compitieron: m.cotizaciones.length,
+  };
+  const falla = chequearGuardrail(c, m).find(x => !x.pasa);
+  c.aprobado = !falla;
+  c.motivo_rechazo = falla ? falla.motivo : null;
+  estado.commitments.push(c);
+  if (c.aprobado) m.commitment_id = c.id;
+}
+
+function escalar(m, trigger, titulo, detalle) {
+  estado.escalaciones.push({ id: `esc-${estado.escalaciones.length + 1}`, mandato_id: m.id,
+    trigger, titulo, detalle, ts: Date.now(), asignado_a: "Mesa de operaciones" });
+}
 
 /* ==========================================================================
    RENDER
+   --------------------------------------------------------------------------
+   El render completo corre SOLO cuando el estado cambió (bandera `sucio`).
+   Los cronómetros y el reloj se actualizan aparte, in situ, sin tocar el DOM
+   de alrededor: reconstruir todo cada segundo era lo que hacía titilar.
    ========================================================================== */
+const animados = new Set();
+const esNuevo = id => { if (animados.has(id)) return false; animados.add(id); return true; };
 
-let estadoOperacion = "en_curso";       // "en_curso" | "escalado" | "cerrado"
-let idsDibujados = new Set();           // para animar solo lo que entra nuevo
+let modoResolucion = false;
+let casoActivo = null;      // id de la escalación que se está resolviendo
 
-function render(s) {
-  renderCabecera(s);
-  renderMandato(s);
-  renderTranscripcion(s);
-  renderCommitments(s);
-  renderEscalaciones(s);
-  renderHistorial(s);
+function alternarResolucion(on) {
+  modoResolucion = on;
+  // Al entrar se abre la escalación más reciente, salvo que ya hubiera una elegida.
+  if (modoResolucion && !estado.escalaciones.some(e => e.id === casoActivo)) {
+    casoActivo = estado.escalaciones.at(-1)?.id ?? null;
+  }
+  render();
 }
 
-/* 1 · Header ------------------------------------------------------------- */
-function renderCabecera(s) {
-  texto("op-id", s.operacion.id);
-  texto("op-origen", s.operacion.puerto_origen);
-  texto("op-destino", s.operacion.destino);
-  texto("op-cliente", s.operacion.cliente);
-  texto("op-contenedor", s.operacion.contenedor_id);
+function render() {
+  document.body.classList.toggle("foco", modoResolucion);
+  const sw = $("sw-res");
+  if (sw && sw.checked !== modoResolucion) sw.checked = modoResolucion;
 
-  const etiquetas = { en_curso: "En curso", escalado: "Escalado", cerrado: "Cerrado" };
-  const badge = $("op-estado");
-  badge.className = `badge badge--${estadoOperacion}`;
-  texto("op-estado-texto", etiquetas[estadoOperacion]);
-}
-
-/* 2 · Mandato ------------------------------------------------------------ */
-function renderMandato(s) {
-  const m = s.mandato;
-  texto("mandato-id", m.id);
-  texto("mandato-tope", moneda(m.tope_precio) + " MXN");
-  texto("regla-tope", moneda(m.tope_precio));
-  texto("mandato-ventana", `${fechaCorta(m.ventana_inicio)} — ${fechaCorta(m.ventana_fin)} 2026`);
-  texto("mandato-restante", restante(m.vigente_hasta));
-  texto("mandato-vence", `Vence ${hora(m.vigente_hasta)} · ${fechaCorta(m.vigente_hasta.slice(0, 10))}`);
-
-  // La regla muestra el último monto discutido contra el tope.
-  const ultimo = s.commitments[s.commitments.length - 1];
-  const relleno = $("regla-relleno");
-  if (ultimo) {
-    const ratio = Math.min(ultimo.monto / m.tope_precio, 1);
-    relleno.style.width = `${ratio * 100}%`;
-    relleno.classList.toggle("regla__relleno--excede", ultimo.monto > m.tope_precio);
-    texto("regla-actual", `Último: ${moneda(ultimo.monto)}`);
+  // En modo resolución el dashboard entero está oculto: no hay para qué
+  // reconstruirlo, y al volver se redibuja con el estado del momento.
+  if (modoResolucion) {
+    renderResolucion();
   } else {
-    relleno.style.width = "0%";
-    texto("regla-actual", "Sin acuerdo aún");
+    renderBrief();
+    renderMandatos();
+    renderCommitments();
+    renderEscalaciones();
+    renderHistorial();
   }
-
-  if (m.condiciones.length) {
-    $("condiciones-bloque").hidden = false;
-    $("mandato-condiciones").replaceChildren(
-      ...m.condiciones.map(c => {
-        const li = document.createElement("li");
-        li.textContent = c;
-        return li;
-      })
-    );
-  }
+  if (drawerRef) pintarDrawer();
 }
 
-/* 3 · Transcripción en vivo ---------------------------------------------- */
-function renderTranscripcion(s) {
-  const cont = $("transcripcion");
-  const llamada = s.llamada_actual;
-
-  $("linea-vivo").hidden = !llamada;
-  texto("llamada-contraparte", llamada ? llamada.contraparte : "sin llamada activa");
-
-  if (!llamada) {
-    cont.replaceChildren(crearVacio("No hay ninguna llamada en curso."));
-    return;
-  }
-
-  texto("llamada-duracion", duracion(llamada.inicio));
-
-  const scroll = $("transcripcion-scroll");
-  const alFinal = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 80;
-
-  cont.replaceChildren();
-  llamada.turnos.forEach(t => cont.appendChild(
-    t.role === "guardrail" ? crearMarcaGuardrail(t) : crearTurno(t)
-  ));
-
-  if (alFinal) scroll.scrollTop = scroll.scrollHeight;
+/* Tick liviano: reloj + cronómetros vivos. No reconstruye nada. */
+function tick() {
+  const ahora = new Date();
+  texto("reloj-h", ahora.toLocaleTimeString("es-MX", { hour12: false }));
+  texto("reloj-f", `${ahora.getDate()} ${MESES[ahora.getMonth()]} ${ahora.getFullYear()}`);
+  document.querySelectorAll("[data-dur]").forEach(n => {
+    n.textContent = cronometro(Number(n.dataset.dur), n.dataset.fin ? Number(n.dataset.fin) : null);
+  });
 }
 
-function crearTurno(t) {
-  const nuevo = !idsDibujados.has(t.ts);
-  idsDibujados.add(t.ts);
+function renderBrief() {
+  const activos = estado.mandatos.filter(m => m.estado === "evaluando" || m.estado === "llamando").length;
+  const envivo = estado.mandatos.reduce((n, m) => n + m.llamadas.length, 0);
+  const conf = estado.commitments.filter(c => c.aprobado);
 
-  const wrap = document.createElement("div");
-  wrap.className = `turno turno--${t.role}` + (nuevo ? " aparece" : "");
+  // Serie real de ahorro acumulado: arranca en 0 y suma por commitment aprobado.
+  const serie = [0];
+  let acc = 0;
+  [...conf].sort((a, b) => a.creado_en - b.creado_en).forEach(c => {
+    const m = estado.mandatos.find(x => x.id === c.mandato_id);
+    if (m) { acc += m.tope_precio - c.monto; serie.push(acc); }
+  });
 
-  const quien = document.createElement("div");
-  quien.className = "turno__quien";
-  const nombre = document.createElement("span");
-  nombre.className = "label";
-  nombre.textContent = t.role === "agent" ? "Volta" : "Contraparte";
-  const cuando = document.createElement("span");
-  cuando.className = "turno__hora mono";
-  cuando.textContent = hora(t.ts);
-  quien.append(nombre, cuando);
+  const tiles = [
+    { v: activos, n: "Mandatos activos", i: "target" },
+    { v: envivo, n: "Llamadas en vivo", i: "phone", cls: envivo ? "tile--vivo" : "" },
+    { v: conf.length, n: "Commitments confirmados", i: "check" },
+    { v: moneda(acc), n: "Ahorro vs. tope", i: "trend", cls: "tile--good", spark: serie },
+    { v: estado.escalaciones.length, n: "Escalados a humano", i: "alerta",
+      cls: estado.escalaciones.length ? "tile--warn" : "" },
+  ];
 
-  const burbuja = document.createElement("div");
-  burbuja.className = "burbuja";
-  burbuja.textContent = t.text;
-
-  wrap.append(quien, burbuja);
-  return wrap;
-}
-
-/* Marca inline en la transcripción: acá corrió el guardrail. */
-function crearMarcaGuardrail(t) {
-  const el = document.createElement("div");
-  el.className = `marca-guardrail marca-guardrail--${t.aprobado ? "ok" : "bad"}`
-    + (idsDibujados.has(t.ts) ? "" : " aparece");
-  idsDibujados.add(t.ts);
-  el.textContent = t.aprobado
-    ? `Guardrail · commitment aprobado · ${moneda(t.monto)}`
-    : `Guardrail · commitment rechazado · ${moneda(t.monto)}`;
-  return el;
-}
-
-/* 4 · Commitments -------------------------------------------------------- */
-function renderCommitments(s) {
-  const tbody = $("commitments");
-  $("commitments-vacio").hidden = s.commitments.length > 0;
-
-  const aprobados = s.commitments.filter(c => c.aprobado === true).length;
-  texto("commitments-resumen", `${aprobados} de ${s.commitments.length} confirmados`);
-
-  tbody.replaceChildren(...s.commitments.map(c => crearFilaCommitment(c, s.mandato)));
-}
-
-function crearFilaCommitment(c, mandato) {
-  const nuevo = !idsDibujados.has(c.id);
-  idsDibujados.add(c.id);
-
-  const tr = document.createElement("tr");
-  if (nuevo) tr.className = "fila-nueva";
-
-  // Carrier + tipo + chequeos del guardrail
-  const tdCarrier = document.createElement("td");
-  const carrier = document.createElement("div");
-  carrier.className = "commit__carrier";
-  carrier.textContent = c.contraparte;
-  const tipo = document.createElement("div");
-  tipo.className = "commit__tipo";
-  tipo.textContent = c.tipo;
-  tdCarrier.append(carrier, tipo);
-
-  if (c.aprobado !== null && c.aprobado !== undefined) {
-    const chequeos = document.createElement("div");
-    chequeos.className = "chequeos";
-    chequearGuardrail(c, mandato).forEach(ch => {
-      const fila = document.createElement("div");
-      fila.className = `chequeo chequeo--${ch.pasa ? "pasa" : "falla"}`;
-      const marca = document.createElement("span");
-      marca.className = "chequeo__marca";
-      marca.textContent = ch.pasa ? "✓" : "✕";
-      const txt = document.createElement("span");
-      txt.textContent = ch.etiqueta;
-      fila.append(marca, txt);
-      chequeos.appendChild(fila);
-    });
-    tdCarrier.appendChild(chequeos);
-  }
-
-  const tdMonto = document.createElement("td");
-  tdMonto.className = "commit__monto mono";
-  tdMonto.textContent = moneda(c.monto);
-
-  const tdFecha = document.createElement("td");
-  tdFecha.className = "mono";
-  tdFecha.textContent = fechaCorta(c.fecha_retiro);
-
-  // Estado: "pendiente" es local (esperando la respuesta del guardrail);
-  // una vez que el backend responde, manda `aprobado`.
-  const tdEstado = document.createElement("td");
-  const estadoNombre = c.aprobado === true ? "confirmado"
-                     : c.aprobado === false ? "rechazado"
-                     : "pendiente";
-  const pill = document.createElement("span");
-  pill.className = `estado estado--${estadoNombre}`;
-  pill.textContent = estadoNombre;
-  tdEstado.appendChild(pill);
-
-  if (c.motivo_rechazo) {
-    const motivo = document.createElement("div");
-    motivo.className = "motivo";
-    motivo.textContent = c.motivo_rechazo;
-    tdEstado.appendChild(motivo);
-  }
-
-  tr.append(tdCarrier, tdMonto, tdFecha, tdEstado);
-  return tr;
-}
-
-/* 5 · Escalaciones ------------------------------------------------------- */
-function renderEscalaciones(s) {
-  const panel = $("panel-escalacion");
-  panel.hidden = s.escalaciones.length === 0;
-  if (panel.hidden) return;
-
-  texto("escalacion-total", String(s.escalaciones.length));
-  $("escalaciones").replaceChildren(...s.escalaciones.map(crearEscalacion));
-}
-
-function crearEscalacion(e) {
-  const nuevo = !idsDibujados.has(e.id);
-  idsDibujados.add(e.id);
-
-  const wrap = document.createElement("div");
-  wrap.className = "escalacion" + (nuevo ? " aparece" : "");
-
-  const trigger = document.createElement("span");
-  trigger.className = "escalacion__trigger";
-  trigger.textContent = e.trigger;
-
-  const titulo = document.createElement("div");
-  titulo.className = "escalacion__que";
-  const strong = document.createElement("strong");
-  strong.textContent = e.titulo;
-  titulo.append(strong);
-
-  const detalle = document.createElement("div");
-  detalle.className = "dato__nota";
-  detalle.textContent = e.detalle;
-
-  const pie = document.createElement("div");
-  pie.className = "escalacion__pie";
-  const quien = document.createElement("span");
-  quien.className = "escalacion__quien";
-  quien.textContent = `${e.contraparte} · ${e.asignado_a}`;
-  const cuando = document.createElement("span");
-  cuando.className = "mono";
-  cuando.textContent = `${hora(e.ts)} · ${e.call_id}`;
-  pie.append(quien, cuando);
-
-  wrap.append(trigger, titulo, detalle, pie);
-  return wrap;
-}
-
-/* 6 · Historial ---------------------------------------------------------- */
-function renderHistorial(s) {
-  const lista = $("historial");
-  texto("historial-total", String(s.llamadas.length));
-
-  if (!s.llamadas.length) {
-    lista.replaceChildren(crearVacio("Primera llamada de esta operación."));
-    return;
-  }
-
-  lista.replaceChildren(...[...s.llamadas].reverse().map(l => {
-    const li = document.createElement("li");
-    li.className = "llamada";
-
-    const cuando = document.createElement("span");
-    cuando.className = "llamada__hora mono";
-    cuando.textContent = hora(l.inicio);
-
-    const carrier = document.createElement("span");
-    carrier.className = "llamada__carrier";
-    carrier.textContent = l.contraparte;
-
-    const resultado = document.createElement("span");
-    resultado.className = "llamada__resultado" + (l.escalado ? " llamada__resultado--escalado" : "");
-    resultado.textContent = l.escalado ? (l.motivo_escalacion ?? "Escalado") : l.resumen;
-
-    li.append(cuando, carrier, resultado);
-    return li;
+  $("brief").replaceChildren(...tiles.map(t => {
+    const w = el("div", `tile ${t.cls ?? ""}`);
+    const top = el("div", "tile__top");
+    const izq = el("div");
+    izq.append(el("div", "tile__valor num", String(t.v)));
+    const caja = el("div", "tile__ico");
+    caja.append(ico(t.i, 17));
+    top.append(izq, caja);
+    w.append(top, el("div", "tile__nota", t.n));
+    if (t.spark) { const s = sparkline(t.spark); if (s) w.append(s); }
+    return w;
   }));
 }
 
-function crearVacio(mensaje) {
-  const div = document.createElement("div");
-  div.className = "vacio";
-  div.textContent = mensaje;
-  return div;
+/* Interruptor del modo resolución — arriba a la derecha, en la cabecera.
+   Se construye una sola vez: vive fuera del render para no perder el foco
+   del teclado ni reiniciar la animación de la bola en cada actualización. */
+function montarSwitch() {
+  const lab = el("label", "switch");
+  const inp = document.createElement("input");
+  inp.type = "checkbox";
+  inp.id = "sw-res";
+  inp.onchange = () => alternarResolucion(inp.checked);
+  const pista = el("span", "switch__pista");
+  pista.append(el("span", "switch__bola"));
+  lab.append(inp, pista, el("span", "switch__txt", "Modo resolución"));
+  $("sw-slot").append(lab);
+}
+
+/* -- Mandatos ------------------------------------------------------------- */
+function renderMandatos() {
+  $("mandatos-vacio").hidden = estado.mandatos.length > 0;
+  texto("mandatos-total", estado.mandatos.length);
+  $("mandatos").replaceChildren(...[...estado.mandatos].reverse().map(cardMandato));
+}
+
+function cardMandato(m) {
+  const w = el("div", `mandato mandato--${m.estado}` + (esNuevo(m.id) ? " entra" : ""));
+
+  const top = el("div", "mandato__top");
+  const izq = el("div");
+  izq.append(el("div", "mandato__id", m.id), el("div", "mandato__cont mono", m.contenedor));
+  const etq = { evaluando:"Evaluando", llamando:"Llamando", cerrado:"Cerrado", escalado:"Escalado" };
+  const pill = el("span", `pill pill--${m.estado}`);
+  if (m.estado === "llamando") pill.append(el("span", "pill__p"));
+  pill.append(document.createTextNode(etq[m.estado]));
+  top.append(izq, pill);
+  w.append(top);
+
+  const t = el("div", "terminos");
+  t.append(termino("calendar", "Día", fechaCorta(m.dia)),
+           termino("reloj", "Franja", `${m.desde}–${m.hasta}`),
+           termino("wallet", "Tope", moneda(m.tope_precio)));
+  w.append(t);
+
+  if (m.estado === "evaluando" || m.estado === "llamando") {
+    const total = m.candidatos?.length ?? 3;
+    const hechas = m.cotizaciones.length;
+    const p = el("div", "progreso");
+    const txt = el("div", "progreso__t");
+    txt.append(el("span", null, m.estado === "evaluando" ? "Eligiendo a quién llamar…" : `${m.llamadas.length} en vivo`),
+               el("span", null, `${hechas} de ${total} cotizaron`));
+    const pista = el("div", "progreso__p");
+    const barra = el("div", "progreso__b");
+    barra.style.width = `${(hechas / total) * 100}%`;
+    pista.append(barra);
+    p.append(txt, pista);
+    w.append(p);
+  }
+
+  if (m.llamadas.length) {
+    const v = el("div", "vivas");
+    m.llamadas.forEach(ll => v.append(filaViva(ll)));
+    w.append(v);
+  }
+
+  w.append(pieMandato(m));
+  return w;
+}
+
+function termino(icono, k, v) {
+  const t = el("div", "termino");
+  const kk = el("div", "termino__k");
+  kk.append(ico(icono, 11), document.createTextNode(k));
+  t.append(kk, el("div", "termino__v", v));
+  return t;
+}
+
+function filaViva(ll) {
+  const b = el("button", "viva");
+  b.type = "button";
+  b.onclick = () => abrirDrawer("llamada", ll.call_id);
+
+  const eq = el("div", "eq" + (ll.fase === "marcando" ? " eq--espera" : ""));
+  eq.append(el("i"), el("i"), el("i"));
+
+  const bloque = el("div");
+  bloque.append(el("div", "viva__q", ll.chofer), el("div", "viva__c", ll.carrier.nombre));
+
+  const dur = el("div", "viva__d mono");
+  dur.dataset.dur = ll.inicio;
+  dur.textContent = cronometro(ll.inicio);
+
+  const e = el("div", "viva__e");
+  e.append(document.createTextNode(ll.resumen));
+  if (ll.oferta) { e.append(document.createTextNode(" · ")); e.append(el("span", "viva__o mono", moneda(ll.oferta))); }
+
+  b.append(eq, bloque, dur, e);
+  return b;
+}
+
+function pieMandato(m) {
+  const p = el("div", "mandato__pie");
+  if (m.estado === "evaluando" || m.estado === "llamando") {
+    p.append(el("span", null, `${CARRIERS.length} transportistas en la base`));
+    return p;
+  }
+  const c = estado.commitments.find(x => x.id === m.commitment_id);
+  if (c) {
+    const izq = el("span");
+    izq.append(document.createTextNode("Reservado con "), el("b", null, c.contraparte));
+    p.append(izq, el("span", "mono", moneda(c.monto)));
+  } else {
+    p.append(el("span", null, "Sin acuerdo — requiere revisión humana"));
+  }
+  return p;
+}
+
+/* -- Commitments ---------------------------------------------------------- */
+const COLUMNAS = [
+  { k: "Transportista", i: "user" }, { k: "Monto", i: "dinero" },
+  { k: "Retiro", i: "calendar" }, { k: "Estado", i: "actividad", der: true },
+];
+
+function renderCabecera() {
+  $("tabla-head").replaceChildren(...COLUMNAS.map(c => {
+    const th = el("th");
+    const d = el("div", "th" + (c.der ? " th--der" : ""));
+    d.append(ico(c.i, 12), document.createTextNode(c.k));
+    th.append(d);
+    return th;
+  }));
+}
+
+function renderCommitments() {
+  $("commitments-vacio").hidden = estado.commitments.length > 0;
+  const ok = estado.commitments.filter(c => c.aprobado).length;
+  texto("commitments-resumen", `${ok} de ${estado.commitments.length} confirmados`);
+  $("commitments").replaceChildren(...[...estado.commitments].reverse().map(filaCommitment));
+}
+
+function filaCommitment(c) {
+  const m = estado.mandatos.find(x => x.id === c.mandato_id);
+  const tr = el("tr", "fila" + (esNuevo(c.id) ? " entra" : ""));
+  tr.tabIndex = 0;
+  tr.onclick = () => abrirDrawer("commitment", c.id);
+  tr.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrirDrawer("commitment", c.id); } };
+
+  const td1 = el("td");
+  const quien = el("div", "celda-quien");
+  const bloque = el("div");
+  bloque.append(el("div", "c-fuerte", c.contraparte), el("div", "c-sub", `${c.chofer} · ${c.mandato_id}`));
+  quien.append(avatar(c.chofer), bloque);
+  td1.append(quien);
+
+  const td2 = el("td");
+  td2.append(el("div", "c-monto mono", moneda(c.monto)));
+  if (m) {
+    const dif = m.tope_precio - c.monto;
+    const nota = el("div", "c-sub");
+    nota.append(el("span", dif >= 0 ? "ahorro" : "exceso",
+      dif >= 0 ? `${moneda(dif)} bajo el tope` : `${moneda(-dif)} sobre el tope`));
+    td2.append(nota);
+    const med = el("div", "medidor");
+    const f = el("div", "medidor__f" + (dif < 0 ? " medidor__f--x" : ""));
+    f.style.width = `${Math.min(100, (c.monto / (m.tope_precio || 1)) * 100)}%`;
+    med.append(f);
+    td2.append(med);
+  }
+
+  const td3 = el("td");
+  td3.append(el("div", "c-fuerte mono", fechaCorta(c.fecha_retiro)), el("div", "c-sub mono", c.hora_retiro));
+
+  const td4 = el("td", "td-der");
+  const caja = el("div", "estado-caja");
+  caja.append(el("span", `pill pill--${c.aprobado ? "confirmado" : "rechazado"}`, c.aprobado ? "confirmado" : "rechazado"),
+              ico("chevron", 15, "chevron"));
+  td4.append(caja);
+
+  tr.append(td1, td2, td3, td4);
+  return tr;
+}
+
+/* -- Escalaciones --------------------------------------------------------- */
+function renderEscalaciones() {
+  const panel = $("panel-esc");
+  panel.hidden = estado.escalaciones.length === 0;
+  if (panel.hidden) return;
+  // El recuento vive solo en el KPI de arriba: acá era ruido duplicado.
+  $("escalaciones").replaceChildren(...[...estado.escalaciones].reverse().map(e => {
+    const w = el("div", "esc" + (esNuevo(e.id) ? " entra" : ""));
+    const t = el("div", "esc__t");
+    t.append(ico("alerta", 12), document.createTextNode(e.trigger));
+    w.append(t, el("div", "esc__q", e.titulo), el("div", "esc__d", e.detalle),
+             el("div", "esc__p", `${e.mandato_id} · ${horaDe(e.ts)} · ${e.asignado_a}`));
+    return w;
+  }));
 }
 
 /* ==========================================================================
-   SIMULACIÓN — solo mientras no haya backend
-   --------------------------------------------------------------------------
-   Reproduce el GUION contra el objeto `estado`, corriendo cada commitment por
-   el mismo guardrail que corre el backend, para que la demo se vea real.
+   MODO RESOLUCIÓN — todo lo que un humano necesita para retomar la llamada
    ========================================================================== */
+function renderResolucion() {
+  const cont = $("res-body");
+  const e = estado.escalaciones.find(x => x.id === casoActivo) ?? estado.escalaciones.at(-1);
 
-function aplicarEvento(ev) {
-  if (ev.tipo === "turno") {
-    estado.llamada_actual.turnos.push({ role: ev.role, text: ev.text, ts: new Date().toISOString() });
+  /* 0 · Barra superior: volver + título. Siempre presente, aun sin casos. */
+  const top = el("div", "res-top");
+  const volver = el("button", "btn-volver");
+  volver.type = "button";
+  volver.append(ico("flecha", 16), document.createTextNode("Volver al dashboard"));
+  volver.onclick = () => alternarResolucion(false);
+  const tit = el("div");
+  tit.append(el("div", "res-top__t", "Modo resolución"),
+             el("div", "res-top__s", e ? "Un humano toma el caso desde acá" : "Nada pendiente de intervención"));
+  top.append(volver, tit);
+
+  if (!e) {
+    const v = el("div", "res-vacio");
+    const i = el("div", "res-vacio__i"); i.append(ico("check", 26));
+    v.append(i, el("div", "res-vacio__t", "No hay casos escalados"),
+      el("div", "res-vacio__d", "Volta está cerrando todo dentro de mandato. Cuando algo se salga de los límites o la contraparte pida un humano, el caso aparece acá."));
+    cont.replaceChildren(top, v);
+    return;
   }
 
-  if (ev.tipo === "commitment") {
-    const chequeos = chequearGuardrail(ev.commitment, estado.mandato);
-    const falla = chequeos.find(c => !c.pasa);
-    const commitment = {
-      ...ev.commitment,
-      creado_en: new Date().toISOString(),
-      aprobado: !falla,
-      motivo_rechazo: falla ? falla.motivo : null,   // mismo texto que devuelve guardrail.py
-    };
-    estado.commitments.push(commitment);
+  const m = estado.mandatos.find(x => x.id === e.mandato_id);
+  const out = el("div", "res");
+  out.style.cssText = "display:flex;flex-direction:column;gap:18px";
 
-    // Deja la huella del guardrail en la transcripción, en el turno exacto.
-    estado.llamada_actual.turnos.push({
-      role: "guardrail", ts: new Date().toISOString(),
-      aprobado: commitment.aprobado, monto: commitment.monto,
+  /* Selector de caso: el panel lateral ya no está, así que va acá */
+  if (estado.escalaciones.length > 1) {
+    const casos = el("div", "res-casos");
+    estado.escalaciones.forEach(x => {
+      const c = el("button", "caso-chip" + (x.id === casoActivo ? " caso-chip--activo" : ""));
+      c.type = "button";
+      c.onclick = () => { casoActivo = x.id; render(); };
+      c.append(el("span", "caso-chip__p"), document.createTextNode(`${x.mandato_id} · ${x.trigger}`));
+      casos.append(c);
     });
+    out.append(casos);
   }
 
-  if (ev.tipo === "escalacion") {
-    estado.escalaciones.push({ ...ev.escalacion, ts: new Date().toISOString() });
+  /* 1 · Encabezado de alerta: por qué llegó esto a un humano */
+  const alerta = el("div", "res-alerta");
+  const ai = el("div", "res-alerta__i");
+  ai.append(ico("alerta", 21));
+  const at = el("div");
+  at.append(el("div", "res-alerta__t", e.trigger),
+            el("div", "res-alerta__q", e.titulo),
+            el("div", "res-alerta__d", e.detalle));
+  alerta.append(ai, at);
+  out.append(alerta);
+
+  /* 2 · Mandato original + perfil del transportista derivado */
+  const cols = el("div", "res-cols");
+
+  if (m) {
+    const caja = el("div", "res-caja");
+    const h = el("div", "res-caja__h");
+    h.append(ico("escudo", 12), document.createTextNode("Mandato original"));
+    const b = el("div", "res-caja__b");
+    const tope = el("div", "res-tope");
+    tope.append(el("div", "res-tope__v mono", moneda(m.tope_precio)), el("div", "res-tope__k", "tope autorizado"));
+    b.append(tope, grid(
+      dato("Mandato", m.id), dato("Contenedor", m.contenedor),
+      dato("Día de retiro", fechaLarga(m.dia), true),
+      dato("Franja horaria", `${m.desde} – ${m.hasta}`),
+      dato("Ruta", `${RUTA.origen} → ${RUTA.destino}`)));
+    caja.append(h, b);
+    cols.append(caja);
   }
 
-  if (ev.tipo === "estado") {
-    estadoOperacion = ev.estado_operacion;
+  // El transportista de la mejor cotización: con quién conviene volver a hablar.
+  const mejor = m ? [...m.cotizaciones].sort((a, b) => a.oferta - b.oferta)[0] : null;
+  if (mejor) {
+    const caja = el("div", "res-caja");
+    const h = el("div", "res-caja__h");
+    h.append(ico("user", 12), document.createTextNode("Transportista derivado"));
+    const b = el("div", "res-caja__b");
+
+    const ch = el("div", "res-chofer");
+    const info = el("div");
+    info.append(el("div", "res-chofer__n", mejor.carrier.chofer), el("div", "res-chofer__e", mejor.carrier.nombre));
+    ch.append(avatar(mejor.carrier.chofer), info);
+
+    const tel = el("div", "res-tel");
+    tel.append(ico("phone", 16), el("div", "res-tel__v mono", mejor.carrier.tel));
+
+    b.append(ch, tel, grid(
+      dato("Última oferta", moneda(mejor.oferta)),
+      dato("Tarifa de lista", moneda(mejor.carrier.tarifa)),
+      dato("Reputación", `${mejor.carrier.score} / 5`),
+      dato("Viajes previos", String(mejor.carrier.viajes))));
+    caja.append(h, b);
+    cols.append(caja);
+  }
+  out.append(cols);
+
+  /* 3 · Mini-historial del caso: qué pasó antes de derivar */
+  if (m) {
+    const caja = el("div", "res-caja");
+    const h = el("div", "res-caja__h");
+    h.append(ico("hist", 12), document.createTextNode("Qué pasó en este mandato"));
+    const b = el("div", "res-caja__b");
+    b.style.paddingTop = "4px";
+    const tl = el("div", "res-tl");
+
+    // Sólo las llamadas de ESTE mandato, en orden cronológico.
+    estado.llamadas
+      .filter(l => l.mandato_id === m.id)
+      .sort((a, b2) => a.inicio - b2.inicio)
+      .forEach(l => tl.append(eventoLlamada(l, m)));
+
+    // Y el veredicto del guardrail que cerró el caso.
+    estado.commitments.filter(c => c.mandato_id === m.id).forEach(c => tl.append(eventoGuardrail(c)));
+
+    b.append(tl);
+    caja.append(h, b);
+    out.append(caja);
+  }
+
+  cont.replaceChildren(top, out);
+}
+
+function eventoLlamada(l, m) {
+  const w = el("div", "res-ev");
+  const dif = l.oferta - m.tope_precio;
+
+  w.append(el("div", "res-ev__h mono", horaDe(l.inicio)));
+  const av = avatar(l.chofer, true); av.classList.add("res-ev__av"); w.append(av);
+  w.append(el("div", "res-ev__n", l.chofer));
+  w.append(el("div", "res-ev__o mono", l.oferta ? moneda(l.oferta) : "—"));
+
+  const chip = el("span", "chip-v " + (dif > 0 ? "chip-v--no" : "chip-v--si"),
+    dif > 0 ? `+${moneda(dif)} sobre el tope` : "dentro del tope");
+  const vc = el("div", "res-ev__v");
+  vc.append(chip);
+  w.append(vc);
+
+  const sub = el("div", "res-ev__e");
+  sub.append(document.createTextNode(`${l.carrier.nombre} · ${l.resumen}`));
+  if (l.pide_humano) {
+    sub.append(document.createTextNode(" · "));
+    sub.append(el("span", "chip-v chip-v--h", "pidió humano"));
+  }
+  w.append(sub);
+  return w;
+}
+
+function eventoGuardrail(c) {
+  const w = el("div", "res-ev res-ev--sys");
+  w.append(el("div", "res-ev__h mono", horaDe(c.creado_en)));
+  const caja = el("div", "res-ev__sys");
+  const i = el("div", "res-ev__sysi");
+  i.append(ico(c.aprobado ? "check" : "x", 14));
+  const txt = el("div");
+  txt.append(el("div", "res-ev__n", c.aprobado ? `Guardrail aprobó ${c.id}` : `Guardrail rechazó ${c.id}`),
+             el("div", "res-ev__e", c.motivo_rechazo ?? "Dentro del mandato"));
+  caja.append(i, txt);
+  w.append(caja, el("span", "chip-v " + (c.aprobado ? "chip-v--si" : "chip-v--no"), c.aprobado ? "aprobado" : "rechazado"));
+  return w;
+}
+
+/* -- Historial ------------------------------------------------------------ */
+function renderHistorial() {
+  $("historial-vacio").hidden = estado.llamadas.length > 0;
+  texto("historial-total", estado.llamadas.length);
+  $("historial").replaceChildren(...[...estado.llamadas].reverse().map(l => {
+    const b = el("button", "log");
+    b.type = "button";
+    b.onclick = () => abrirDrawer("llamada", l.call_id);
+
+    const av = avatar(l.chofer, true);
+    av.classList.add("log__av");
+
+    const q = el("div", "log__q");
+    q.append(document.createTextNode(l.chofer),
+             ico(l.direccion === "saliente" ? "arribaD" : "abajoI", 12,
+                 l.direccion === "saliente" ? "dir-sal" : "dir-ent"));
+
+    const h = el("div", "log__h mono", horaDe(l.inicio));
+    b.append(av, q, h, el("div", "log__r", `${l.contraparte} · ${l.resumen}`));
+    return b;
+  }));
+}
+
+/* ==========================================================================
+   DRAWER
+   ========================================================================== */
+const drawer = $("drawer");
+let drawerRef = null;
+
+function abrirDrawer(tipo, id) {
+  drawerRef = { tipo, id };
+  pintarDrawer();
+  if (!drawer.open) drawer.showModal();
+}
+$("drawer-cerrar").onclick = () => drawer.close();
+drawer.addEventListener("close", () => { drawerRef = null; });
+// Clic en el fondo cierra
+drawer.addEventListener("click", e => { if (e.target === drawer) drawer.close(); });
+
+function pintarDrawer() {
+  if (!drawerRef) return;
+  const body = $("drawer-body");
+  if (drawerRef.tipo === "commitment") {
+    const c = estado.commitments.find(x => x.id === drawerRef.id);
+    if (!c) return;
+    texto("drawer-t", c.contraparte);
+    texto("drawer-s", `${c.id} · ${c.tipo} · ${c.mandato_id}`);
+    body.replaceChildren(...detalleCommitment(c));
+  } else {
+    const l = buscarLlamada(drawerRef.id);
+    if (!l) return;
+    texto("drawer-t", l.chofer);
+    texto("drawer-s", `${l.carrier.nombre} · ${l.call_id}`);
+    body.replaceChildren(...detalleLlamada(l));
   }
 }
 
-function arrancarSimulacion() {
-  const inicio = Date.now();
-  let siguiente = 0;
-
-  // Un solo reloj: aplica los eventos que ya vencieron y redibuja.
-  setInterval(() => {
-    const transcurrido = (Date.now() - inicio) / 1000;
-    let cambio = false;
-
-    while (siguiente < GUION.length && GUION[siguiente].t <= transcurrido) {
-      aplicarEvento(GUION[siguiente]);
-      siguiente++;
-      cambio = true;
-    }
-
-    // Redibuja siempre: mantiene vivos el cronómetro y el tiempo restante.
-    render(estado);
-    if (cambio) $("transcripcion-scroll").scrollTop = $("transcripcion-scroll").scrollHeight;
-  }, 1000);
+function buscarLlamada(callId) {
+  const cerrada = estado.llamadas.find(l => l.call_id === callId);
+  if (cerrada) return cerrada;
+  for (const m of estado.mandatos) {
+    const viva = m.llamadas.find(l => l.call_id === callId);
+    if (viva) return viva;
+  }
+  return null;
 }
+
+function bloque(icono, titulo, ...hijos) {
+  const b = el("div", "bloque");
+  if (titulo) {
+    const t = el("div", "bloque__t");
+    t.append(ico(icono, 12), document.createTextNode(titulo));
+    b.append(t);
+  }
+  b.append(...hijos);
+  return b;
+}
+function dato(k, v, ancho) {
+  const d = el("div", "dato" + (ancho ? " dato--w" : ""));
+  d.append(el("div", "dato__k", k), el("div", "dato__v", v));
+  return d;
+}
+const grid = (...h) => { const g = el("div", "datos"); g.append(...h); return g; };
+
+function detalleCommitment(c) {
+  const m = estado.mandatos.find(x => x.id === c.mandato_id);
+  const out = [];
+
+  const cabeza = el("div", "bloque");
+  const fila = el("div");
+  fila.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px";
+  fila.append(el("div", "monto-xl mono", moneda(c.monto)),
+              el("span", `pill pill--${c.aprobado ? "confirmado" : "rechazado"}`, c.aprobado ? "confirmado" : "rechazado"));
+  cabeza.append(fila);
+  if (m) {
+    const dif = m.tope_precio - c.monto;
+    cabeza.append(el("div", "dato__k", dif >= 0
+      ? `${moneda(dif)} por debajo del tope autorizado`
+      : `${moneda(-dif)} por encima del tope autorizado`));
+  }
+  out.push(cabeza);
+
+  if (m) {
+    const chequeos = chequearGuardrail(c, m).map(ch => {
+      const w = el("div", `chequeo chequeo--${ch.pasa ? "ok" : "no"}`);
+      const i = el("div", "chequeo__i");
+      i.append(ico(ch.pasa ? "check" : "x", 13));
+      const txt = el("div");
+      txt.append(el("div", "chequeo__k", ch.k), el("div", "chequeo__v", ch.v));
+      w.append(i, txt);
+      return w;
+    });
+    out.push(bloque("escudo", "Evaluación del guardrail", ...chequeos,
+      el("div", "nota", "Esta decisión la toma código determinístico, no el modelo de voz. Corre en backend/app/guardrail.py, antes de que el commitment se escriba al estado.")));
+  }
+
+  out.push(bloque("doc", "Acuerdo", grid(
+    dato("Transportista", c.contraparte, true), dato("Chofer", c.chofer),
+    dato("Teléfono", c.carrier?.tel ?? "—"), dato("Retiro", fechaLarga(c.fecha_retiro)),
+    dato("Hora", c.hora_retiro), dato("Contenedor", m?.contenedor ?? "—", true))));
+
+  out.push(bloque("escudo", "Mandato que lo autoriza", grid(
+    dato("Mandato", c.mandato_id), dato("Tope", m ? moneda(m.tope_precio) : "—"),
+    dato("Franja autorizada", m ? `${m.desde} – ${m.hasta}` : "—", true),
+    dato("Ruta", `${RUTA.origen} → ${RUTA.destino}`, true))));
+
+  out.push(bloque("hist", "Trazabilidad", grid(
+    dato("Llamada de origen", c.call_id), dato("Registrado", horaDe(c.creado_en)),
+    dato("Cotizaciones comparadas", `${c.compitieron} transportistas`, true))));
+
+  if (c.motivo_rechazo) {
+    const n = el("div", "chequeo chequeo--no");
+    const i = el("div", "chequeo__i"); i.append(ico("x", 13));
+    const t = el("div");
+    t.append(el("div", "chequeo__k", "Motivo del rechazo"), el("div", "chequeo__v", c.motivo_rechazo));
+    n.append(i, t);
+    out.push(bloque("alerta", "Resultado", n));
+  }
+
+  const ir = el("button", "btn", "Ver la llamada que lo produjo");
+  ir.type = "button";
+  ir.onclick = () => abrirDrawer("llamada", c.call_id);
+  out.push(ir);
+  return out;
+}
+
+function detalleLlamada(l) {
+  const m = estado.mandatos.find(x => x.id === l.mandato_id);
+  const out = [];
+  const viva = !l.fin;
+
+  const cabeza = el("div", "bloque");
+  const fila = el("div");
+  fila.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px";
+  const dur = el("div", "monto-xl mono");
+  dur.dataset.dur = l.inicio;
+  if (l.fin) dur.dataset.fin = l.fin;
+  dur.textContent = cronometro(l.inicio, l.fin);
+  const est = el("span", `pill pill--${viva ? "llamando" : l.fase === "cerrada" ? "confirmado" : "rechazado"}`);
+  if (viva) est.append(el("span", "pill__p"));
+  est.append(document.createTextNode(viva ? "en vivo" : l.fase === "cerrada" ? "cotizada" : "sin acuerdo"));
+  fila.append(dur, est);
+  cabeza.append(fila, el("div", "dato__k", l.resumen));
+  out.push(cabeza);
+
+  out.push(bloque("user", "Contraparte", grid(
+    dato("Empresa", l.carrier.nombre, true), dato("Chofer", l.chofer),
+    dato("Teléfono", l.carrier.tel), dato("Reputación", `${l.carrier.score} / 5`),
+    dato("Viajes previos", String(l.carrier.viajes)),
+    dato("Tarifa de lista", moneda(l.carrier.tarifa)),
+    dato("Ofertó", l.oferta ? moneda(l.oferta) : "—"))));
+
+  if (m) out.push(bloque("escudo", "Mandato en juego", grid(
+    dato("Mandato", m.id), dato("Tope", moneda(m.tope_precio)),
+    dato("Franja", `${m.desde} – ${m.hasta}`), dato("Día", fechaCorta(m.dia)))));
+
+  const fases = el("div", "fases");
+  l.fases.forEach(f => {
+    const w = el("div", "fase");
+    const marca = el("div", "fase__m");
+    marca.append(el("div", "fase__pt"), el("div", "fase__ln"));
+    w.append(marca, el("div", "fase__k", f.k), el("div", "fase__v mono", horaDe(f.ts)), el("div", "fase__sp"));
+    fases.append(w);
+  });
+  out.push(bloque("hist", "Cómo fue la llamada", fases));
+
+  if (l.turnos.length) {
+    const turnos = el("div", "turnos");
+    l.turnos.forEach(t => {
+      const w = el("div", `turno turno--${t.role}`);
+      w.append(el("div", "turno__q", t.role === "agent" ? "Volta" : l.chofer), el("div", "burbuja", t.text));
+      turnos.append(w);
+    });
+    out.push(bloque("chat", "Transcripción", turnos));
+  }
+
+  const c = estado.commitments.find(x => x.call_id === l.call_id);
+  if (c) {
+    const ir = el("button", "btn", `Ver el commitment ${c.id}`);
+    ir.type = "button";
+    ir.onclick = () => abrirDrawer("commitment", c.id);
+    out.push(ir);
+  }
+  return out;
+}
+
+/* ==========================================================================
+   FORMULARIO
+   ========================================================================== */
+const dlg = $("form-mandato");
+
+/** Hoy a medianoche local — el piso de fechas permitido. */
+function hoyLocal() {
+  const h = new Date();
+  return new Date(h.getFullYear(), h.getMonth(), h.getDate());
+}
+const isoHoy = () => {
+  const h = hoyLocal();
+  return `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,"0")}-${String(h.getDate()).padStart(2,"0")}`;
+};
+
+const CAMPOS_ERR = { dia: ["e-dia", "f-dia"], hora: ["e-hora", "f-desde"], tope: ["e-tope", "f-tope"] };
+
+function limpiarErrores() {
+  Object.values(CAMPOS_ERR).forEach(([eId, iId]) => {
+    $(eId).hidden = true;
+    $(iId).classList.remove("mal");
+  });
+  $("f-hasta").classList.remove("mal");
+}
+
+function marcarError(campo, mensaje) {
+  const [eId, iId] = CAMPOS_ERR[campo];
+  const e = $(eId);
+  e.replaceChildren(ico("alerta", 12), document.createTextNode(mensaje));
+  e.hidden = false;
+  $(iId).classList.add("mal");
+  if (campo === "hora") $("f-hasta").classList.add("mal");
+  $(iId).focus();
+}
+
+$("abrir-form").onclick = () => {
+  const f = $("f-dia");
+  // El picker ya no deja elegir días pasados; la validación de abajo cubre
+  // el caso de que el usuario escriba la fecha a mano.
+  f.min = isoHoy();
+  if (!f.value || f.value < f.min) f.value = isoHoy();
+  limpiarErrores();
+  dlg.showModal();
+};
+$("cancelar").onclick = () => dlg.close();
+
+$("form").addEventListener("submit", e => {
+  const d = Object.fromEntries(new FormData(e.target));
+  limpiarErrores();
+
+  if (!d.dia) { e.preventDefault(); marcarError("dia", "Elegí un día de retiro."); return; }
+
+  // Comparación por componentes: parsear "YYYY-MM-DD" con new Date() lo trata
+  // como UTC y en zonas negativas como MX puede correrse un día.
+  const [a, mm, dd] = d.dia.split("-").map(Number);
+  if (new Date(a, mm - 1, dd) < hoyLocal()) {
+    e.preventDefault();
+    marcarError("dia", "Fecha no válida: no es posible ingresar fechas pasadas. Por favor, selecciona una fecha actual o futura.");
+    return;
+  }
+
+  if (!d.desde || !d.hasta) { e.preventDefault(); marcarError("hora", "Completá la franja horaria."); return; }
+  if (d.hasta <= d.desde) {
+    e.preventDefault();
+    marcarError("hora", "La franja termina antes de empezar. Revisá los horarios.");
+    return;
+  }
+
+  const tope = Number(d.tope);
+  if (d.tope === "" || !Number.isInteger(tope) || tope < 0) {
+    e.preventDefault();
+    marcarError("tope", "El precio máximo tiene que ser un número entero y no negativo.");
+    return;
+  }
+
+  crearMandato({ dia: d.dia, desde: d.desde, hasta: d.hasta, tope });
+  render();
+});
 
 /* ==========================================================================
    ARRANQUE
    ========================================================================== */
+$("ico-truck").append(ico("truck", 15));
+$("ico-truck2").append(ico("truck", 15));
+$("ico-mandatos").append(ico("target", 14));
+$("ico-commits").append(ico("check", 14));
+$("ico-alerta").append(ico("alerta", 14));
+$("ico-historial").append(ico("hist", 14));
+$("ico-mas").append(ico("mas", 15));
+$("ico-x").append(ico("x", 16));
+montarSwitch();
+texto("ruta-texto", `${RUTA.origen} → ${RUTA.destino}`);
+texto("ruta-form", `${RUTA.origen} → ${RUTA.destino}`);
+renderCabecera();
 
-async function main() {
-  render(await fetchState());
-  $("transcripcion-scroll").scrollTop = $("transcripcion-scroll").scrollHeight;
-
-  if (USAR_BACKEND) {
-    // Poll simple. Si más adelante storage.py pasa a Supabase/WebSocket,
-    // esto se reemplaza por la suscripción y render() no cambia.
-    setInterval(async () => render(await fetchState()), 2000);
-  } else {
-    arrancarSimulacion();
-  }
+function semilla() {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const manana = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+  // 1) Tope holgado: cierra dentro del mandato.
+  altaMandatoLocal({ dia: hoy, desde: "08:00", hasta: "12:00", tope: 9000, contenedor: "MSCU1234567" });
+  // 2) Tope apretado: nadie baja de $7.000, así que Volta NO cierra y escala.
+  //    Es el caso que hay que poder mostrarle a los jueces.
+  setTimeout(() => altaMandatoLocal({ dia: manana, desde: "14:00", hasta: "18:00", tope: 7000, contenedor: "TCLU7788990" }), 9500);
 }
 
-main();
+semilla();
+render();
+tick();
+
+// Un solo bucle: render sólo si algo cambió; el tick siempre (barato).
+setInterval(() => {
+  if (sucio) { render(); sucio = false; }
+  tick();
+}, 1000);
 </script>
 
 </body>
