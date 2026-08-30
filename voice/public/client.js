@@ -9,6 +9,12 @@ let esperandoFraseDeTraspaso = false;
 let motivoEscalacion = "";
 let esperandoFraseDeCierre = false;
 let motivoFinLlamada = "";
+// El corte normal espera output_audio_buffer.stopped. Esto evita interrumpir
+// una despedida que todavía se está reproduciendo; el timer solo es respaldo.
+let cierreProgramado = null;
+// Colgar durante una escalación no puede cortar de una: primero vuelve Volta
+// y registra lo que escuchó, y recién cuando terminó se cierra la sesión.
+let colgarTrasCommitment = false;
 
 const statusEl = () => document.getElementById("status");
 const setStatus = (s) => (statusEl().textContent = s);
@@ -355,8 +361,8 @@ export async function onToolCall(name, args) {
 
   if (name === "end_call") {
     motivoFinLlamada = args.motivo || "";
-    esperandoFraseDeCierre = true;
     console.log("[end_call]", motivoFinLlamada);
+    armarCierre();
     return {
       ok: true,
       instruccion:
@@ -543,6 +549,19 @@ function entrarEnEscalacion() {
   console.log("[escalacion] inicio. motivo:", motivoEscalacion);
 }
 
+// Deja la sesión lista para cortar apenas termine de sonar lo que Volta esté
+// diciendo. El corte real lo hace output_audio_buffer.stopped; el timer es
+// solo el respaldo por si ese evento no llega.
+function armarCierre() {
+  esperandoFraseDeCierre = true;
+  if (cierreProgramado) return;
+  cierreProgramado = setTimeout(() => {
+    cierreProgramado = null;
+    console.log("[hangup] fallback de cierre");
+    hangup();
+  }, 15000);
+}
+
 function volverAVolta() {
   escalado = false;
   cerrarPuenteOperador();
@@ -599,6 +618,16 @@ async function handleEvent(ev) {
     onTranscript("agent", ev.transcript);
   }
 
+  // En WebRTC, Realtime avisa con este evento que el buffer de salida ya se
+  // drenó. Recién entonces cerramos, dejando una cola mínima para el audio
+  // que todavía pueda estar en el jitter buffer local.
+  if (ev.type === "output_audio_buffer.stopped" && esperandoFraseDeCierre) {
+    esperandoFraseDeCierre = false;
+    if (cierreProgramado) clearTimeout(cierreProgramado);
+    console.log("[hangup] audio de despedida terminado");
+    cierreProgramado = setTimeout(() => hangup(), 750);
+  }
+
   if (ev.type === "response.done") {
     if (ev.response.metadata?.topic === "resumen_escalacion") {
       const parte = (ev.response.output?.[0]?.content ?? []).find((c) => c.type === "output_text");
@@ -617,7 +646,18 @@ async function handleEvent(ev) {
     for (const item of ev.response.output ?? []) {
       if (item.type !== "function_call") continue;
       huboToolCall = true;
-      const result = await onToolCall(item.name, JSON.parse(item.arguments || "{}"));
+      // Si una tool explota (backend caído, sin operación cargada) el error
+      // tiene que volver AL MODELO, no tirar abajo el resto del handler: sin
+      // este catch la excepción se llevaba puesto el function_call_output —
+      // dejando al modelo esperando para siempre— y de paso salteaba la
+      // entrada en escalación y el cierre de la llamada.
+      let result;
+      try {
+        result = await onToolCall(item.name, JSON.parse(item.arguments || "{}"));
+      } catch (e) {
+        console.error("[tool] falló", item.name, e);
+        result = { error: e.message ?? "la herramienta falló" };
+      }
       dc.send(JSON.stringify({
         type: "conversation.item.create",
         item: { type: "function_call_output", call_id: item.call_id, output: JSON.stringify(result) },
@@ -632,14 +672,13 @@ async function handleEvent(ev) {
       entrarEnEscalacion();
     }
 
-    if (esperandoFraseDeCierre && !huboToolCall) {
-      esperandoFraseDeCierre = false;
-      setStatus("cortando — la llamada no servía (" + motivoFinLlamada + ")");
-      // Le damos un momento a la frase de cierre para que termine de
-      // reproducirse antes de cortar de verdad — no hay (todavía) un
-      // evento del lado del cliente que avise "el audio ya terminó de
-      // sonar", así que esto es un heurístico corto, no una garantía.
-      setTimeout(() => hangup(), 2500);
+    // Volta ya volvió y terminó de registrar (esta response no trajo más
+    // tools): recién ahora se puede cortar, dejando que termine de hablar.
+    if (colgarTrasCommitment && !huboToolCall) {
+      colgarTrasCommitment = false;
+      motivoFinLlamada = "cierre tras la escalación";
+      console.log("[hangup] commitment registrado, cortando");
+      armarCierre();
     }
   }
 
@@ -713,6 +752,8 @@ async function connect() {
 }
 
 function hangup() {
+  if (cierreProgramado) clearTimeout(cierreProgramado);
+  cierreProgramado = null;
   if (vigilanciaMandato) { clearInterval(vigilanciaMandato); vigilanciaMandato = null; }
   if (latencyRAF) cancelAnimationFrame(latencyRAF);
   latencyRAF = null;
@@ -724,6 +765,8 @@ function hangup() {
   pc = dc = analyser = null;
   escalado = false;
   esperandoFraseDeTraspaso = false;
+  esperandoFraseDeCierre = false;
+  colgarTrasCommitment = false;
   callId = null;
   candidatoActual = null;
   candidatosRestantes = null;
@@ -740,7 +783,16 @@ function interrupt() {
 
 btn("connect").onclick = () => { modoEntrante = false; connect(); };
 if (btn("entrante")) btn("entrante").onclick = () => { modoEntrante = true; connect(); };
-btn("hangup").onclick = hangup;
+// Colgar en el medio de una escalación tiraría a la basura todo lo que Volta
+// venía escuchando en silencio: el commitment lo dispara volverAVolta(), no
+// el corte. Así que primero se lo pedimos, y colgamos cuando ya lo registró.
+btn("hangup").onclick = () => {
+  if (!escalado) return hangup();
+  colgarTrasCommitment = true;
+  volverAVolta();
+  // Después de volverAVolta(), que deja el status en "en llamada".
+  setStatus("registrando lo que se acordó…");
+};
 btn("interrupt").onclick = interrupt;
 btn("escalar").onclick = escalarManual;
 btn("devolver").onclick = volverAVolta;

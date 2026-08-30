@@ -479,6 +479,10 @@ function controlarLlamada(callId: string, entrante = false, desde = "") {
   // se calla. Sin esto se metería a hablar arriba de los dos humanos.
   let esperandoFraseDeTraspaso = false;
   let esperandoFraseDeCierre = false;
+  // end_call puede venir junto con la despedida en la misma response. El
+  // cierre real se hace cuando Realtime avisa que drenó su buffer de audio;
+  // este timer solo cubre el caso excepcional en que ese evento no llegue.
+  let cierreProgramado: ReturnType<typeof setTimeout> | null = null;
   // Para decidir si vale la pena volver a llamar cuando se corta.
   let cierreDeliberado = false;
   let huboCommitment = false;
@@ -503,6 +507,15 @@ function controlarLlamada(callId: string, entrante = false, desde = "") {
   }, () => {
     esperandoFraseDeCierre = true;
     cierreDeliberado = true;
+    if (!cierreProgramado) {
+      // Este fallback no debe competir con la despedida: esperamos de sobra
+      // al evento output_audio_buffer.stopped antes de cortar por timeout.
+      cierreProgramado = setTimeout(() => {
+        cierreProgramado = null;
+        console.log("[colgar] fallback de end_call");
+        void colgarLlamada(callId);
+      }, 15000);
+    }
   });
 
   const ws = new WebSocket(`wss://api.openai.com/v1/realtime?call_id=${callId}`, {
@@ -727,6 +740,16 @@ CONTEXTO DE ESTA LLAMADA — ES ENTRANTE, TE ESTAN LLAMANDO A VOS
       if (ev.transcript?.trim()) transcripcion.push({ role: "agent", text: ev.transcript, ts: Date.now() });
     }
 
+    // WebRTC/SIP: este evento confirma que el buffer de audio de Realtime ya
+    // se drenó. Es la señal correcta para cortar después de una despedida,
+    // en lugar de adivinar su duración con un timeout fijo.
+    if (ev.type === "output_audio_buffer.stopped" && esperandoFraseDeCierre) {
+      esperandoFraseDeCierre = false;
+      if (cierreProgramado) clearTimeout(cierreProgramado);
+      console.log("[colgar] audio de despedida terminado");
+      cierreProgramado = setTimeout(() => void colgarLlamada(callId), 750);
+    }
+
     if (ev.type === "response.done") {
       // Un solo response.create al final: si mandamos uno por cada tool
       // la API rechaza los siguientes con conversation_already_has_active_response.
@@ -769,13 +792,6 @@ CONTEXTO DE ESTA LLAMADA — ES ENTRANTE, TE ESTAN LLAMANDO A VOS
         llamadaViva?.callarse();
       }
 
-      // Se despidió: ahora cuelga de verdad. El delay deja que termine de
-      // salir el audio de la despedida antes de cortar la linea.
-      if (esperandoFraseDeCierre && !hubo) {
-        esperandoFraseDeCierre = false;
-        console.log("[colgar] cortando en 2s");
-        setTimeout(() => colgarLlamada(callId), 2000);
-      }
     }
 
     if (ev.type === "error") console.error("[realtime]", ev.error);
@@ -783,6 +799,8 @@ CONTEXTO DE ESTA LLAMADA — ES ENTRANTE, TE ESTAN LLAMANDO A VOS
 
   ws.on("close", () => {
     console.log("[sip] llamada terminada", callId);
+    if (cierreProgramado) clearTimeout(cierreProgramado);
+    cierreProgramado = null;
     llamadaViva = null;
     llamadaEnCurso = false;
     if (vigilancia) { clearInterval(vigilancia); vigilancia = null; }
