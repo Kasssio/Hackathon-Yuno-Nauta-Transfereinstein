@@ -54,12 +54,12 @@ class MandatoCreate(BaseModel):
     """Lo que el humano completa para crear un mandato."""
 
     operacion_id: str
-    tope_precio: float = Field(..., gt=0, description="Monto máximo permitido, en USD — el techo duro")
+    tope_precio: float = Field(..., gt=0, description="Monto máximo permitido, en MXN — el techo duro")
     tarifa_objetivo: Optional[float] = Field(
         None,
         gt=0,
         description=(
-            "Monto al que Volta debería intentar cerrar primero, en USD. Es distinto del "
+            "Monto al que Volta debería intentar cerrar primero, en MXN. Es distinto del "
             "tope: el tope es el límite duro que nunca se cruza, el objetivo es la meta que "
             "se persigue antes de acercarse al tope. Opcional — si no se define, el motor de "
             "negociación usa un objetivo derivado del tope (ver negotiation.py)."
@@ -157,6 +157,13 @@ class CotizacionCreate(BaseModel):
     monto: float = Field(..., gt=0)
     fecha_retiro: date
     hora_retiro: Optional[str] = Field(None, pattern=_PATRON_HORA, description='Hora del retiro ofrecida, "HH:MM" 24hs, si ya se habló — opcional en esta etapa, todavía no compromete nada.')
+    metodo_pago: Optional[str] = Field(
+        None,
+        description=(
+            "Forma de pago acordada con el transportista, confirmada en voz al "
+            "cerrar. Sale de metodos_pago del catálogo; None si no se habló."
+        ),
+    )
     detalle: str = ""
 
 

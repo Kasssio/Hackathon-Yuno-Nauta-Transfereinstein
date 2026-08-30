@@ -24,7 +24,9 @@ from app.models import (
     TipoRespuestaConductor,
 )
 from app.negotiation import (
-    ESCALERA_CONCESION,
+    AVANCE_SI_CEDE,
+    AVANCE_SI_NO_CEDE,
+    RONDAS_POR_ESTRATEGIA,
     UMBRAL_URGENCIA_MINUTOS,
     ContextoEstrategia,
     calcular_estrategia,
@@ -171,11 +173,12 @@ def test_negociacion_avanza_progresivamente_hacia_el_maximo_con_concesiones():
         montos_volta.append(decision.monto_a_comunicar)
         estado = _negociar_ronda(estado, mandato, decision, oferta)
 
-    # Estrictamente creciente y nunca por encima del tope.
+    # Creciente y nunca por encima del tope. Con un conductor que cede de a
+    # poco, Volta tambien cede de a poco: avanza pero no salta al techo.
     assert montos_volta == sorted(montos_volta)
     assert montos_volta[0] == 8500.0  # arrancó en el objetivo
     assert all(m <= 9000.0 for m in montos_volta)
-    assert montos_volta[-1] == 9000.0  # con suficiente concesión, llega al tope
+    assert montos_volta[-1] > montos_volta[0]
 
 
 def test_no_llega_al_maximo_de_un_salto_en_la_primera_ronda():
@@ -202,7 +205,11 @@ def test_objetivo_derivado_cuando_el_mandato_no_define_uno():
 # 3. Detección de concesiones — reciprocidad
 # ---------------------------------------------------------------------------
 
-def test_sin_concesion_del_conductor_volta_no_avanza_un_escalon():
+def test_sin_concesion_del_conductor_volta_acelera_hacia_su_techo():
+    """Politica: con quien no se mueve ni un peso, Volta NO se queda
+    empatado — avanza fuerte hacia su maximo. De ese conductor no va a
+    sacar nada, y lo escaso es el tiempo de llamada: o llega rapido a su
+    mejor oferta y cierra, o descubre que no hay trato y pasa al siguiente."""
     mandato = _mandato(tope_precio=9000.0, tarifa_objetivo=8500.0)
     estado = _estado(mandato)
 
@@ -214,7 +221,28 @@ def test_sin_concesion_del_conductor_volta_no_avanza_un_escalon():
     oferta2 = _oferta(monto=10000.0, tipo_respuesta=TipoRespuestaConductor.rechazo)
     decision2 = evaluar_oferta(estado, mandato, oferta2, _contexto())
 
-    assert decision2.monto_a_comunicar == decision1.monto_a_comunicar  # se mantiene firme
+    assert decision2.monto_a_comunicar > decision1.monto_a_comunicar
+    assert decision2.monto_a_comunicar <= mandato.tope_precio
+
+
+def test_el_que_no_cede_llega_al_techo_antes_que_el_que_cede():
+    """El mismo punto, comparando las dos ramas: a igual cantidad de
+    rondas, el conductor duro empuja a Volta mas arriba que el que va
+    cediendo de a poco."""
+    def correr(montos):
+        mandato = _mandato(tope_precio=9000.0, tarifa_objetivo=8500.0)
+        estado = _estado(mandato)
+        ultimo = None
+        for m in montos:
+            oferta = _oferta(monto=m, tipo_respuesta=TipoRespuestaConductor.contraoferta)
+            decision = evaluar_oferta(estado, mandato, oferta, _contexto())
+            ultimo = decision.monto_a_comunicar
+            estado = _negociar_ronda(estado, mandato, decision, oferta)
+        return ultimo
+
+    duro = correr([10000.0, 10000.0, 10000.0])
+    blando = correr([10000.0, 9700.0, 9400.0])
+    assert duro > blando
 
 
 def test_con_concesion_del_conductor_volta_si_avanza():
@@ -245,8 +273,16 @@ def test_ultimo_candidato_fuerza_estrategia_cierre():
     assert estrategia == EstrategiaModo.cierre
 
 
-def test_cierre_tiene_menos_pasos_que_firme():
-    assert len(ESCALERA_CONCESION[EstrategiaModo.cierre]) < len(ESCALERA_CONCESION[EstrategiaModo.firme])
+def test_cierre_tiene_menos_rondas_que_firme():
+    assert RONDAS_POR_ESTRATEGIA[EstrategiaModo.cierre] < RONDAS_POR_ESTRATEGIA[EstrategiaModo.firme]
+
+
+def test_no_ceder_hace_avanzar_mas_rapido_que_ceder():
+    """La politica: con quien no se mueve, Volta llega rapido a su techo
+    (de ese no va a sacar nada y el tiempo de llamada es lo escaso). Con
+    quien cede, avanza de a poco porque cada peso compra movimiento."""
+    for modo in EstrategiaModo:
+        assert AVANCE_SI_NO_CEDE[modo] > AVANCE_SI_CEDE[modo]
 
 
 # ---------------------------------------------------------------------------
@@ -539,13 +575,13 @@ def test_pedir_el_maximo_directamente_no_lo_adelanta():
 
 
 # ---------------------------------------------------------------------------
-# 16. Volta solo propone números redondos, múltiplos de 10
+# 16. Volta solo propone números redondos, múltiplos de 100
 # ---------------------------------------------------------------------------
 
-def test_propuesta_de_volta_es_siempre_multiplo_de_10():
+def test_propuesta_de_volta_es_siempre_multiplo_de_100():
     """Con un objetivo/tope deliberadamente no redondos, cada monto que
     Volta propone a lo largo de varias rondas tiene que caer en un
-    múltiplo de 10 — nunca los decimales de cálculo interno de la
+    múltiplo de 100 — nunca los decimales de cálculo interno de la
     escalera de concesión."""
     mandato = _mandato(tope_precio=8930.0, tarifa_objetivo=8347.0)
     estado = _estado(mandato)
@@ -554,33 +590,33 @@ def test_propuesta_de_volta_es_siempre_multiplo_de_10():
         oferta = _oferta(monto=monto)
         decision = evaluar_oferta(estado, mandato, oferta, _contexto())
         if decision.monto_a_comunicar is not None:
-            assert decision.monto_a_comunicar % 10 == 0
+            assert decision.monto_a_comunicar % 100 == 0
             assert decision.monto_a_comunicar <= mandato.tope_precio
         estado = _negociar_ronda(estado, mandato, decision, oferta)
 
 
 def test_objetivo_derivado_no_redondo_se_propone_redondeado():
     """El objetivo derivado (tope * ratio, sin definir tarifa_objetivo) casi
-    nunca cae justo en un múltiplo de 10 — igual tiene que comunicarse
+    nunca cae justo en un múltiplo de 100 — igual tiene que comunicarse
     redondeado."""
     mandato = _mandato(tope_precio=8930.0, tarifa_objetivo=None)
     estado = _estado(mandato)
     oferta = _oferta(monto=15000.0)
     decision = evaluar_oferta(estado, mandato, oferta, _contexto())
     assert decision.monto_a_comunicar is not None
-    assert decision.monto_a_comunicar % 10 == 0
+    assert decision.monto_a_comunicar % 100 == 0
 
 
 def test_redondeo_nunca_empuja_la_propuesta_por_encima_del_tope():
     """Si el paso final de la escalera (el máximo mismo) no es múltiplo de
-    10, redondear 'hacia arriba' lo pasaría del tope — el motor tiene que
+    100, redondear 'hacia arriba' lo pasaría del tope — el motor tiene que
     redondear para abajo en ese caso, nunca superar el límite duro."""
-    mandato = _mandato(tope_precio=8955.0, tarifa_objetivo=8500.0)  # 8955 no es múltiplo de 10
+    mandato = _mandato(tope_precio=8955.0, tarifa_objetivo=8500.0)  # 8955 no es múltiplo de 100
     estado = _estado(mandato, ultima_oferta_volta=8500.0, estrategia_actual=EstrategiaModo.cierre)
     oferta = _oferta(monto=8900.0, tipo_respuesta=TipoRespuestaConductor.contraoferta)
     decision = evaluar_oferta(estado, mandato, oferta, _contexto(candidatos_restantes=0))
     assert decision.monto_a_comunicar is not None
-    assert decision.monto_a_comunicar % 10 == 0
+    assert decision.monto_a_comunicar % 100 == 0
     assert decision.monto_a_comunicar <= mandato.tope_precio
 
 
@@ -591,7 +627,7 @@ def test_aceptar_la_oferta_del_conductor_no_se_redondea():
     mandato = _mandato(tope_precio=9000.0, tarifa_objetivo=8500.0)
     # con una oferta previa de Volta ya se paso el sondeo inicial
     estado = _estado(mandato, ultima_oferta_volta=8300.0)
-    oferta = _oferta(monto=8237.0)  # mejor que el objetivo, no es múltiplo de 10
+    oferta = _oferta(monto=8237.0)  # mejor que el objetivo, no es múltiplo de 100
     decision = evaluar_oferta(estado, mandato, oferta, _contexto())
     assert decision.intencion == IntencionNegociacion.accept_and_confirm
     assert decision.monto_a_comunicar == 8237.0

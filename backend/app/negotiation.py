@@ -44,9 +44,12 @@ from .models import (
 # ---------------------------------------------------------------------------
 
 # Si no se definió tarifa_objetivo en el mandato, se deriva del tope con este
-# ratio (objetivo = tope * ratio). 0.94 sobre un tope de $450 da $423 —
-# cerca del objetivo del ejemplo sin hardcodear ese número.
-DEFAULT_OBJETIVO_RATIO = 0.94
+# ratio (objetivo = tope * ratio). 0.78 sobre un tope de $9.000 da $7.020 —
+# unos $2.000 de recorrido real. Con el 0.94 que había antes el objetivo salía
+# $8.460: toda la negociación vivía en una banda de $540 (6% del tope), o sea
+# que Volta abría casi pegado a su techo y no tenía adónde ir. El $8.500 del
+# ejemplo del brief sigue apareciendo, ahora como un escalón intermedio.
+DEFAULT_OBJETIVO_RATIO = 0.78
 
 # Cuánto por debajo tantea Volta cuando el conductor abre con una oferta que
 # ya sería aceptable, y hasta dónde puede bajar ese sondeo (fracción del
@@ -55,15 +58,40 @@ DEFAULT_OBJETIVO_RATIO = 0.94
 SONDEO_INICIAL = 0.08
 PISO_SONDEO = 0.88
 
-# Escalera de concesión: en qué fracción del camino entre objetivo y máximo
-# está Volta autorizado a ofrecer en cada ronda de esa estrategia. Ronda 1
-# siempre es 0.0 (el objetivo); el último valor siempre es 1.0 (el máximo,
-# nunca más que eso). CIERRE tiene menos rondas — "alta urgencia → menos
-# rondas y mayor velocidad" — pero el máximo nunca cambia con la urgencia.
-ESCALERA_CONCESION: dict[EstrategiaModo, list[float]] = {
-    EstrategiaModo.firme: [0.0, 0.35, 0.70, 1.0],
-    EstrategiaModo.equilibrado: [0.0, 0.5, 1.0],
-    EstrategiaModo.cierre: [0.0, 1.0],
+# Cuánto avanza Volta hacia su techo en cada ronda, como fracción del camino
+# entre objetivo y máximo. NO es una escalera fija: el paso depende de si el
+# conductor cedió o no.
+#
+# Con quien va cediendo, Volta cede de a poco: hay progreso, así que cada peso
+# que suelta compra movimiento del otro lado. Con quien no se mueve ni un pelo,
+# avanza rápido hasta su techo — no para premiarlo, sino porque de ese no va a
+# sacar nada y el recurso escaso es el tiempo de llamada: o llega a su mejor
+# oferta y cierra, o descubre rápido que no hay trato y pasa al siguiente.
+AVANCE_SI_CEDE: dict[EstrategiaModo, float] = {
+    EstrategiaModo.firme: 0.15,
+    EstrategiaModo.equilibrado: 0.25,
+    EstrategiaModo.cierre: 0.50,
+}
+AVANCE_SI_NO_CEDE: dict[EstrategiaModo, float] = {
+    EstrategiaModo.firme: 0.45,
+    EstrategiaModo.equilibrado: 0.60,
+    EstrategiaModo.cierre: 1.00,
+}
+
+# Cuántas rondas de ida y vuelta tolera cada estrategia antes de considerarse
+# agotada. Sustituye al largo de la escalera vieja.
+# La disposicion a negociar del transportista (1-5, del catalogo) modula el
+# tamaño del paso. Es un dato previo, no observado: con uno que histericamente
+# no cede (1-2) no tiene sentido el baile largo, se llega antes al techo; con
+# uno flexible (4-5) conviene ir despacio porque va a bajar. Se combina con la
+# reciprocidad: el previo dice cuanto esperar, lo observado corrige sobre la
+# marcha. Sin dato, factor 1.0 y se comporta como antes.
+FACTOR_POR_DISPOSICION: dict[int, float] = {1: 1.5, 2: 1.25, 3: 1.0, 4: 0.8, 5: 0.6}
+
+RONDAS_POR_ESTRATEGIA: dict[EstrategiaModo, int] = {
+    EstrategiaModo.firme: 4,
+    EstrategiaModo.equilibrado: 3,
+    EstrategiaModo.cierre: 2,
 }
 
 UMBRAL_URGENCIA_MINUTOS = 240  # 4 horas — mismo umbral que reemplazo urgente
@@ -78,6 +106,7 @@ class ContextoEstrategia:
 
     candidatos_restantes: Optional[int] = None
     tiempo_restante_minutos: Optional[float] = None
+    disposicion_a_negociar: Optional[int] = None  # 1-5, del catálogo
 
 
 def calcular_estrategia(contexto: ContextoEstrategia) -> EstrategiaModo:
@@ -110,37 +139,44 @@ def _objetivo_y_maximo(mandato: Mandato) -> tuple[float, float]:
 
 
 def _paso_actual(estado: EstadoNegociacion, estrategia: EstrategiaModo) -> int:
-    """Cuántos pasos de la escalera ya se usaron para ESTA estrategia. Si la
-    estrategia cambió de ronda a ronda (ej. se quedó sin alternativas a
-    mitad de negociación y pasó a CIERRE), no reinicia el conteo: cuenta
-    cuántas rondas con oferta de Volta ya hubo, así nunca se retrocede."""
+    """Cuántas rondas con oferta de Volta ya hubo. Se usa para saber si esta
+    es la primera propuesta y para el tope de rondas por estrategia."""
 
     return sum(1 for r in estado.rondas if r.oferta_volta is not None)
 
 
-def _redondear_a_multiplo_de_10(monto: float, tope: float) -> float:
+def _posicion_actual(estado: EstadoNegociacion, objetivo: float, maximo: float) -> float:
+    """Dónde está Volta hoy en el camino objetivo->máximo, como fracción.
+    Se deriva de su última oferta en vez de guardarse aparte: así nunca se
+    desincroniza del estado real de la negociación."""
+
+    if estado.ultima_oferta_volta is None or maximo <= objetivo:
+        return 0.0
+    avanzado = (estado.ultima_oferta_volta - objetivo) / (maximo - objetivo)
+    return min(1.0, max(0.0, avanzado))
+
+
+def _redondear_a_multiplo_de_100(monto: float, tope: float) -> float:
     """Volta negocia como negociaría una persona: en números redondos, no
     con decimales de cálculo interno. Esto SOLO se aplica a un monto que
     Volta mismo propone (paso de la escalera) — nunca a un monto que ya
     dijo la contraparte y que Volta simplemente acepta tal cual (ver
     `es_oferta_aceptable` en `evaluar_oferta`, que usa `monto_conductor`
-    directo, sin pasar por acá). Redondeo hacia el múltiplo de 10 más
+    directo, sin pasar por acá). Redondeo hacia el múltiplo de 100 más
     cercano (mitad para arriba); si eso cae por encima del tope, se
     redondea para abajo en su lugar — el redondeo nunca puede ser la
     forma en que una propuesta termina superando lo autorizado."""
 
-    redondeado = math.floor(monto / 10 + 0.5) * 10
+    redondeado = math.floor(monto / 100 + 0.5) * 100
     if redondeado > tope:
-        redondeado = math.floor(tope / 10) * 10
+        redondeado = math.floor(tope / 100) * 100
     return float(redondeado)
 
 
-def _monto_en_paso(paso: int, estrategia: EstrategiaModo, objetivo: float, maximo: float) -> float:
-    escalera = ESCALERA_CONCESION[estrategia]
-    fraccion = escalera[min(paso, len(escalera) - 1)]
-    monto = objetivo + fraccion * (maximo - objetivo)
-    monto = min(monto, maximo)  # el clamp del paso: nunca > maximo, pase lo que pase
-    return _redondear_a_multiplo_de_10(monto, maximo)
+def _monto_en_posicion(posicion: float, objetivo: float, maximo: float) -> float:
+    monto = objetivo + min(1.0, max(0.0, posicion)) * (maximo - objetivo)
+    monto = min(monto, maximo)  # nunca por encima del techo, pase lo que pase
+    return _redondear_a_multiplo_de_100(monto, maximo)
 
 
 def _hubo_concesion_del_conductor(estado: EstadoNegociacion, monto_actual: Optional[float]) -> bool:
@@ -350,7 +386,6 @@ def evaluar_oferta(
     es_oferta_aceptable = monto_conductor is not None and monto_conductor <= objetivo
 
     paso_ya_dado = _paso_actual(estado, estrategia)
-    escalon_final = len(ESCALERA_CONCESION[estrategia]) - 1
 
     # Una oferta buena en la PRIMERA ronda no se acepta de una: un
     # coordinador real siempre tantea una vez antes de cerrar. Sin esto,
@@ -369,7 +404,7 @@ def evaluar_oferta(
         es_oferta_aceptable = False
         # Un escalón por debajo de lo que pidió, sin bajar del piso de la
         # escalera: es un sondeo, no un regateo agresivo.
-        proximo_monto = _redondear_a_multiplo_de_10(
+        proximo_monto = _redondear_a_multiplo_de_100(
             max(monto_conductor * (1 - SONDEO_INICIAL), objetivo * PISO_SONDEO), maximo
         )
         proximo_monto = min(proximo_monto, monto_conductor)
@@ -382,15 +417,20 @@ def evaluar_oferta(
         paso_a_usar = paso_ya_dado
         ultimo_paso = True
     else:
-        # Reciprocidad: si el conductor no cedió nada respecto de su propia
-        # oferta anterior, Volta tampoco avanza un escalón — se mantiene en
-        # el mismo punto ya ofrecido (o en el objetivo, si es la ronda 1).
-        if paso_ya_dado > 0 and not _hubo_concesion_del_conductor(estado, monto_conductor):
-            paso_a_usar = paso_ya_dado - 1
+        # El tamaño del paso lo decide el otro lado. Si viene cediendo,
+        # Volta cede de a poco: hay progreso y cada peso compra movimiento.
+        # Si no se movió, avanza fuerte hacia su techo — no para premiarlo,
+        # sino para llegar rápido a su mejor oferta y cerrar o descartarlo.
+        if paso_ya_dado == 0:
+            posicion_nueva = 0.0  # primera propuesta: el objetivo
         else:
-            paso_a_usar = paso_ya_dado
-        proximo_monto = _monto_en_paso(paso_a_usar, estrategia, objetivo, maximo)
-        ultimo_paso = paso_a_usar >= escalon_final
+            cedio = _hubo_concesion_del_conductor(estado, monto_conductor)
+            avance = (AVANCE_SI_CEDE if cedio else AVANCE_SI_NO_CEDE)[estrategia]
+            avance *= FACTOR_POR_DISPOSICION.get(contexto.disposicion_a_negociar or 3, 1.0)
+            posicion_nueva = min(1.0, _posicion_actual(estado, objetivo, maximo) + avance)
+        proximo_monto = _monto_en_posicion(posicion_nueva, objetivo, maximo)
+        paso_a_usar = paso_ya_dado
+        ultimo_paso = posicion_nueva >= 0.999 or paso_ya_dado + 1 >= RONDAS_POR_ESTRATEGIA[estrategia]
 
     motivo_corte = debe_finalizar(
         estado,
@@ -436,7 +476,7 @@ def evaluar_oferta(
         estrategia=estrategia,
         ronda=ronda,
         motivo_interno=(
-            f"paso {paso_a_usar + 1}/{len(ESCALERA_CONCESION[estrategia])} de la escalera "
-            f"{estrategia.value} — {'con' if paso_a_usar == paso_ya_dado else 'sin'} concesión recíproca"
+            f"ronda {paso_a_usar + 1}/{RONDAS_POR_ESTRATEGIA[estrategia]} "
+            f"{estrategia.value} — el conductor {'cedió' if _hubo_concesion_del_conductor(estado, monto_conductor) else 'no se movió'}"
         ),
     )

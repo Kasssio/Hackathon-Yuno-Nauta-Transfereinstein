@@ -444,13 +444,13 @@ CONTEXTO DE ESTA LLAMADA — ES ENTRANTE, TE ESTAN LLAMANDO A VOS
         `Operación: ${op?.cliente}, contenedor ${op?.contenedor_id}, de ${op?.puerto_origen} a ${op?.destino}.
 ` +
         (com?.hay_reserva
-          ? `Reserva vigente: ${com.contraparte}, ${com.monto} dólares, retiro ${com.fecha_retiro} ${com.hora_retiro ?? ""}.
+          ? `Reserva vigente: ${com.contraparte}, ${com.monto} pesos, retiro ${com.fecha_retiro} ${com.hora_retiro ?? ""}.
 `
           : `Todavía no hay ninguna reserva cerrada para esta operación.
 `) +
         `Podés mover el retiro solo dentro de: ${mandato?.ventana_inicio} a ${mandato?.ventana_fin}` +
         (mandato?.horario_inicio ? `, entre las ${mandato.horario_inicio} y las ${mandato.horario_fin}` : "") +
-        `, hasta ${mandato?.tope_precio} dólares.
+        `, hasta ${mandato?.tope_precio} pesos.
 ` +
         `ATENDÉ EN INGLÉS con un saludo corto — identificate como Volta y dejá que te digan a qué ` +
         `llaman. No ofrezcas ni preguntes por disponibilidad: no sos vos quien llama esta vez.`;
@@ -490,7 +490,7 @@ CONTEXTO DE ESTA LLAMADA — ES ENTRANTE, TE ESTAN LLAMANDO A VOS
         `\n\nCONTEXTO DE ESTA LLAMADA (ya resuelto, no lo consultes de nuevo para abrir)\n` +
         `Estás llamando vos a: ${elegido?.nombre ?? "el transportista"}.\n` +
         `Cliente: ${op?.cliente}. Contenedor ${op?.contenedor_id}, de ${op?.puerto_origen} a ${op?.destino}.\n` +
-        `Retiro: ${fecha}${horario}. Tope: ${mandato?.tope_precio} dólares.\n` +
+        `Retiro: ${fecha}${horario}. Tope: ${mandato?.tope_precio} pesos.\n` +
         `ARRANCÁ VOS Y EN INGLÉS: saludá a ${elegido?.nombre ?? "el transportista"} por su ` +
         `nombre, presentate como Volta, decí en una frase de qué transporte se trata y preguntá ` +
         `si tiene disponibilidad para esa fecha y ese horario. Breve, una idea. Nunca preguntes ` +

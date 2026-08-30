@@ -40,7 +40,7 @@ def main() -> None:
 
     mandato = requests.post(f"{BASE_URL}/mandatos", json={
         "operacion_id": op["id"],
-        "tope_precio": 450,
+        "tope_precio": 9000,
         "ventana_inicio": "2026-08-28",
         "ventana_fin": "2026-08-30",
         "horario_inicio": "09:00",

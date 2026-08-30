@@ -189,6 +189,7 @@ export async function onToolCall(name, args) {
         monto: args.monto,
         fecha_retiro: args.fecha_retiro,
         hora_retiro: args.hora_retiro,
+        metodo_pago: args.metodo_pago ?? null,
         detalle: args.detalle ?? "",
       }),
     });
@@ -310,11 +311,11 @@ async function saludarEntrante() {
       "CONTEXTO — ES UNA LLAMADA ENTRANTE, TE ESTAN LLAMANDO A VOS. " +
       `Operación: ${op?.cliente}, contenedor ${op?.contenedor_id}, de ${op?.puerto_origen} a ${op?.destino}. ` +
       (com?.hay_reserva
-        ? `Reserva vigente: ${com.contraparte}, ${com.monto} dólares, retiro ${com.fecha_retiro} ${com.hora_retiro ?? ""}. `
+        ? `Reserva vigente: ${com.contraparte}, ${com.monto} pesos, retiro ${com.fecha_retiro} ${com.hora_retiro ?? ""}. `
         : "Todavía no hay ninguna reserva cerrada. ") +
       `Podés mover el retiro solo dentro de ${mandato?.ventana_inicio} a ${mandato?.ventana_fin}` +
       (mandato?.horario_inicio ? `, entre las ${mandato.horario_inicio} y las ${mandato.horario_fin}` : "") +
-      `, hasta ${mandato?.tope_precio} dólares. ` +
+      `, hasta ${mandato?.tope_precio} pesos. ` +
       "No sabés quién llama: preguntá con quién hablás y de qué transportista, y pedile que " +
       "confirme el número de contenedor antes de darle datos de la operación. ";
   } catch (e) {

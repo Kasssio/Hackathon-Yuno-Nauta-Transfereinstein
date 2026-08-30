@@ -155,6 +155,7 @@ export function crearManejadorDeTools(
           monto: args.monto,
           fecha_retiro: args.fecha_retiro,
           hora_retiro: args.hora_retiro,
+          metodo_pago: args.metodo_pago ?? null,
           detalle: args.detalle ?? "",
         }),
       });

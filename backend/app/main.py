@@ -239,9 +239,14 @@ def evaluar_negociacion(payload: OfertaEntrante) -> DecisionNegociacion:
         vigente_hasta = vigente_hasta.replace(tzinfo=timezone.utc)
     tiempo_restante_minutos = (vigente_hasta - ahora).total_seconds() / 60
 
+    # La disposición sale del catálogo, no del LLM: el cliente ya mandó el
+    # candidato_id y el dato es nuestro. Antes se guardaba y nadie la leía.
+    candidato = obtener_transportista(payload.candidato_id) if payload.candidato_id else None
+
     contexto = ContextoEstrategia(
         candidatos_restantes=payload.candidatos_restantes,
         tiempo_restante_minutos=tiempo_restante_minutos,
+        disposicion_a_negociar=candidato["disposicion_a_negociar"] if candidato else None,
     )
 
     try:

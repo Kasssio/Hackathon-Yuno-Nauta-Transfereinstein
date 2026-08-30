@@ -78,10 +78,14 @@ class Transportista(TypedDict):
     ubicacion: Coordenadas  # base actual del transportista
     disposicion_a_negociar: int  # 1-5, cuánto margen suele ceder en el precio
     puntualidad: int  # 1-5, historial de cumplimiento
-    tarifa_referencia: float  # tarifa base típica, en USD
+    tarifa_referencia: float  # tarifa base típica, en MXN
     tasa_aceptacion_general: float  # 0.0-1.0, qué tan seguido acepta el trabajo
     tasa_aceptacion_corto_plazo: float  # 0.0-1.0, ídem pero pidiendo con poca anticipación
     telefono: str
+    # Cómo cobra. Es una variable negociable más: hay transportistas que
+    # bajan la tarifa si les pagan al contado, y otros que no aceptan
+    # crédito a 30 días. Volta lo confirma al cerrar.
+    metodos_pago: list[str]
 
 
 TRANSPORTISTAS: list[Transportista] = [
@@ -92,12 +96,13 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 19.05, "lon": -104.28},  # a metros del puerto
         "disposicion_a_negociar": 2,
         "puntualidad": 5,
-        "tarifa_referencia": 440,
+        "tarifa_referencia": 8800,
         # Confiable y puntual, pero rígido: acepta casi siempre si le avisan
         # con tiempo, y bastante menos si el pedido es de último momento.
         "tasa_aceptacion_general": 0.85,
         "tasa_aceptacion_corto_plazo": 0.45,
         "telefono": "+52 314 555 0101",
+        "metodos_pago": ["transferencia", "credito_30_dias"],
     },
     {
         "id": "t-express",
@@ -106,11 +111,12 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 19.30, "lon": -103.90},
         "disposicion_a_negociar": 4,
         "puntualidad": 3,
-        "tarifa_referencia": 410,
+        "tarifa_referencia": 8200,
         # Muy eager por trabajo: negocia y acepta fácil, incluso apurado.
         "tasa_aceptacion_general": 0.90,
         "tasa_aceptacion_corto_plazo": 0.70,
         "telefono": "+52 314 555 0102",
+        "metodos_pago": ["transferencia", "efectivo", "credito_30_dias"],
     },
     {
         "id": "t-fletes-pacifico",
@@ -119,10 +125,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 17.98, "lon": -102.18},
         "disposicion_a_negociar": 3,
         "puntualidad": 4,
-        "tarifa_referencia": 425,
+        "tarifa_referencia": 8500,
         "tasa_aceptacion_general": 0.75,
         "tasa_aceptacion_corto_plazo": 0.50,
         "telefono": "+52 753 555 0103",
+        "metodos_pago": ["transferencia", "efectivo"],
     },
     {
         "id": "t-logistica-jalisco",
@@ -131,12 +138,13 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 20.50, "lon": -103.30},  # ruta hacia Guadalajara
         "disposicion_a_negociar": 3,
         "puntualidad": 4,
-        "tarifa_referencia": 430,
+        "tarifa_referencia": 8600,
         # Lejos del puerto — le cuesta más movilizarse rápido si el pedido
         # es de último momento, aunque en general sí acepta.
         "tasa_aceptacion_general": 0.60,
         "tasa_aceptacion_corto_plazo": 0.30,
         "telefono": "+52 33 555 0104",
+        "metodos_pago": ["transferencia", "efectivo"],
     },
     {
         "id": "t-carga-rapida",
@@ -145,12 +153,13 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 19.17, "lon": -96.13},  # lejos de Manzanillo, a propósito
         "disposicion_a_negociar": 5,
         "puntualidad": 2,
-        "tarifa_referencia": 395,
+        "tarifa_referencia": 7900,
         # El nombre no miente: floja en puntualidad, pero justo su fuerte
         # es aceptar pedidos con poca anticipación.
         "tasa_aceptacion_general": 0.80,
         "tasa_aceptacion_corto_plazo": 0.75,
         "telefono": "+52 229 555 0105",
+        "metodos_pago": ["transferencia", "efectivo", "credito_15_dias", "credito_30_dias"],
     },
     {
         "id": "t-bajio",
@@ -159,10 +168,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 19.26, "lon": -104.59},
         "disposicion_a_negociar": 2,
         "puntualidad": 5,
-        "tarifa_referencia": 388,
+        "tarifa_referencia": 7750,
         "tasa_aceptacion_general": 0.70,
         "tasa_aceptacion_corto_plazo": 0.38,
         "telefono": "+52 312 555 0227",
+        "metodos_pago": ["transferencia", "credito_30_dias"],
     },
     {
         "id": "t-altiplano",
@@ -171,10 +181,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 20.51, "lon": -103.13},
         "disposicion_a_negociar": 2,
         "puntualidad": 5,
-        "tarifa_referencia": 418,
+        "tarifa_referencia": 8350,
         "tasa_aceptacion_general": 0.85,
         "tasa_aceptacion_corto_plazo": 0.76,
         "telefono": "+52 477 555 0228",
+        "metodos_pago": ["transferencia", "credito_30_dias"],
     },
     {
         "id": "t-occidente",
@@ -183,10 +194,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 18.52, "lon": -103.93},
         "disposicion_a_negociar": 4,
         "puntualidad": 1,
-        "tarifa_referencia": 468,
+        "tarifa_referencia": 9350,
         "tasa_aceptacion_general": 0.38,
         "tasa_aceptacion_corto_plazo": 0.07,
         "telefono": "+52 33 555 0237",
+        "metodos_pago": ["transferencia", "efectivo", "credito_30_dias"],
     },
     {
         "id": "t-guadalajara-log",
@@ -195,10 +207,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 20.23, "lon": -105.51},
         "disposicion_a_negociar": 5,
         "puntualidad": 3,
-        "tarifa_referencia": 390,
+        "tarifa_referencia": 7800,
         "tasa_aceptacion_general": 0.69,
         "tasa_aceptacion_corto_plazo": 0.58,
         "telefono": "+52 33 555 0212",
+        "metodos_pago": ["transferencia", "efectivo", "credito_15_dias", "credito_30_dias"],
     },
     {
         "id": "t-manzanillo-plus",
@@ -207,10 +220,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 19.00, "lon": -104.28},
         "disposicion_a_negociar": 3,
         "puntualidad": 5,
-        "tarifa_referencia": 440,
+        "tarifa_referencia": 8800,
         "tasa_aceptacion_general": 0.61,
         "tasa_aceptacion_corto_plazo": 0.47,
         "telefono": "+52 314 555 0274",
+        "metodos_pago": ["transferencia", "efectivo"],
     },
     {
         "id": "t-el-aguila",
@@ -219,10 +233,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 18.41, "lon": -104.92},
         "disposicion_a_negociar": 2,
         "puntualidad": 3,
-        "tarifa_referencia": 388,
+        "tarifa_referencia": 7750,
         "tasa_aceptacion_general": 0.53,
         "tasa_aceptacion_corto_plazo": 0.33,
         "telefono": "+52 314 555 0243",
+        "metodos_pago": ["transferencia", "credito_30_dias"],
     },
     {
         "id": "t-doble-via",
@@ -231,10 +246,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 18.28, "lon": -103.25},
         "disposicion_a_negociar": 2,
         "puntualidad": 5,
-        "tarifa_referencia": 418,
+        "tarifa_referencia": 8350,
         "tasa_aceptacion_general": 0.80,
         "tasa_aceptacion_corto_plazo": 0.70,
         "telefono": "+52 351 555 0262",
+        "metodos_pago": ["transferencia", "credito_30_dias"],
     },
     {
         "id": "t-colima",
@@ -243,10 +259,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 19.20, "lon": -103.00},
         "disposicion_a_negociar": 5,
         "puntualidad": 4,
-        "tarifa_referencia": 410,
+        "tarifa_referencia": 8200,
         "tasa_aceptacion_general": 0.56,
         "tasa_aceptacion_corto_plazo": 0.36,
         "telefono": "+52 312 555 0258",
+        "metodos_pago": ["transferencia", "efectivo", "credito_15_dias", "credito_30_dias"],
     },
     {
         "id": "t-michoacan",
@@ -255,10 +272,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 18.10, "lon": -102.04},
         "disposicion_a_negociar": 2,
         "puntualidad": 1,
-        "tarifa_referencia": 445,
+        "tarifa_referencia": 8900,
         "tasa_aceptacion_general": 0.54,
         "tasa_aceptacion_corto_plazo": 0.32,
         "telefono": "+52 753 555 0287",
+        "metodos_pago": ["transferencia", "credito_30_dias"],
     },
     {
         "id": "t-sierra-madre",
@@ -267,10 +285,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 16.80, "lon": -103.42},
         "disposicion_a_negociar": 3,
         "puntualidad": 1,
-        "tarifa_referencia": 465,
+        "tarifa_referencia": 9300,
         "tasa_aceptacion_general": 0.56,
         "tasa_aceptacion_corto_plazo": 0.33,
         "telefono": "+52 443 555 0263",
+        "metodos_pago": ["transferencia", "efectivo"],
     },
     {
         "id": "t-rapidos-pacifico",
@@ -279,10 +298,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 18.06, "lon": -102.13},
         "disposicion_a_negociar": 3,
         "puntualidad": 4,
-        "tarifa_referencia": 415,
+        "tarifa_referencia": 8300,
         "tasa_aceptacion_general": 0.87,
         "tasa_aceptacion_corto_plazo": 0.80,
         "telefono": "+52 753 555 0257",
+        "metodos_pago": ["transferencia", "efectivo"],
     },
     {
         "id": "t-la-costa",
@@ -291,10 +311,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 18.34, "lon": -102.55},
         "disposicion_a_negociar": 4,
         "puntualidad": 5,
-        "tarifa_referencia": 405,
+        "tarifa_referencia": 8100,
         "tasa_aceptacion_general": 0.60,
         "tasa_aceptacion_corto_plazo": 0.44,
         "telefono": "+52 753 555 0248",
+        "metodos_pago": ["transferencia", "efectivo", "credito_30_dias"],
     },
     {
         "id": "t-jalisco-sur",
@@ -303,10 +324,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 16.59, "lon": -103.59},
         "disposicion_a_negociar": 3,
         "puntualidad": 3,
-        "tarifa_referencia": 380,
+        "tarifa_referencia": 7600,
         "tasa_aceptacion_general": 0.85,
         "tasa_aceptacion_corto_plazo": 0.75,
         "telefono": "+52 315 555 0236",
+        "metodos_pago": ["transferencia", "efectivo"],
     },
     {
         "id": "t-golfo",
@@ -315,10 +337,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 19.48, "lon": -95.83},
         "disposicion_a_negociar": 3,
         "puntualidad": 3,
-        "tarifa_referencia": 442,
+        "tarifa_referencia": 8850,
         "tasa_aceptacion_general": 0.66,
         "tasa_aceptacion_corto_plazo": 0.42,
         "telefono": "+52 229 555 0286",
+        "metodos_pago": ["transferencia", "efectivo"],
     },
     {
         "id": "t-veracruz-norte",
@@ -327,10 +350,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 18.54, "lon": -95.36},
         "disposicion_a_negociar": 5,
         "puntualidad": 4,
-        "tarifa_referencia": 415,
+        "tarifa_referencia": 8300,
         "tasa_aceptacion_general": 0.59,
         "tasa_aceptacion_corto_plazo": 0.40,
         "telefono": "+52 229 555 0251",
+        "metodos_pago": ["transferencia", "efectivo", "credito_15_dias", "credito_30_dias"],
     },
     {
         "id": "t-huasteca",
@@ -339,10 +363,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 20.02, "lon": -95.21},
         "disposicion_a_negociar": 2,
         "puntualidad": 2,
-        "tarifa_referencia": 410,
+        "tarifa_referencia": 8200,
         "tasa_aceptacion_general": 0.38,
         "tasa_aceptacion_corto_plazo": 0.33,
         "telefono": "+52 228 555 0219",
+        "metodos_pago": ["transferencia", "credito_30_dias"],
     },
     {
         "id": "t-cargo-golfo",
@@ -351,10 +376,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 19.04, "lon": -96.02},
         "disposicion_a_negociar": 2,
         "puntualidad": 3,
-        "tarifa_referencia": 435,
+        "tarifa_referencia": 8700,
         "tasa_aceptacion_general": 0.44,
         "tasa_aceptacion_corto_plazo": 0.31,
         "telefono": "+52 229 555 0244",
+        "metodos_pago": ["transferencia", "credito_30_dias"],
     },
     {
         "id": "t-continental-mx",
@@ -363,10 +389,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 17.75, "lon": -94.97},
         "disposicion_a_negociar": 4,
         "puntualidad": 5,
-        "tarifa_referencia": 422,
+        "tarifa_referencia": 8450,
         "tasa_aceptacion_general": 0.54,
         "tasa_aceptacion_corto_plazo": 0.45,
         "telefono": "+52 271 555 0295",
+        "metodos_pago": ["transferencia", "efectivo", "credito_30_dias"],
     },
     {
         "id": "t-portuaria",
@@ -375,10 +402,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 19.20, "lon": -96.17},
         "disposicion_a_negociar": 2,
         "puntualidad": 5,
-        "tarifa_referencia": 382,
+        "tarifa_referencia": 7650,
         "tasa_aceptacion_general": 0.92,
         "tasa_aceptacion_corto_plazo": 0.71,
         "telefono": "+52 229 555 0218",
+        "metodos_pago": ["transferencia", "credito_30_dias"],
     },
     {
         "id": "t-tamaulipas",
@@ -387,10 +415,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 22.14, "lon": -97.59},
         "disposicion_a_negociar": 3,
         "puntualidad": 2,
-        "tarifa_referencia": 442,
+        "tarifa_referencia": 8850,
         "tasa_aceptacion_general": 0.51,
         "tasa_aceptacion_corto_plazo": 0.35,
         "telefono": "+52 833 555 0221",
+        "metodos_pago": ["transferencia", "efectivo"],
     },
     {
         "id": "t-costa-cargo",
@@ -399,10 +428,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 23.08, "lon": -98.64},
         "disposicion_a_negociar": 5,
         "puntualidad": 4,
-        "tarifa_referencia": 438,
+        "tarifa_referencia": 8750,
         "tasa_aceptacion_general": 0.72,
         "tasa_aceptacion_corto_plazo": 0.43,
         "telefono": "+52 833 555 0297",
+        "metodos_pago": ["transferencia", "efectivo", "credito_15_dias", "credito_30_dias"],
     },
     {
         "id": "t-transtam",
@@ -411,10 +441,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 22.32, "lon": -97.91},
         "disposicion_a_negociar": 3,
         "puntualidad": 3,
-        "tarifa_referencia": 428,
+        "tarifa_referencia": 8550,
         "tasa_aceptacion_general": 0.56,
         "tasa_aceptacion_corto_plazo": 0.50,
         "telefono": "+52 833 555 0203",
+        "metodos_pago": ["transferencia", "efectivo"],
     },
     {
         "id": "t-del-puerto",
@@ -423,10 +454,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 22.01, "lon": -98.17},
         "disposicion_a_negociar": 3,
         "puntualidad": 5,
-        "tarifa_referencia": 452,
+        "tarifa_referencia": 9050,
         "tasa_aceptacion_general": 0.78,
         "tasa_aceptacion_corto_plazo": 0.63,
         "telefono": "+52 835 555 0246",
+        "metodos_pago": ["transferencia", "efectivo"],
     },
     {
         "id": "t-express-norte",
@@ -435,10 +467,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 23.41, "lon": -96.59},
         "disposicion_a_negociar": 3,
         "puntualidad": 3,
-        "tarifa_referencia": 422,
+        "tarifa_referencia": 8450,
         "tasa_aceptacion_general": 0.94,
         "tasa_aceptacion_corto_plazo": 0.71,
         "telefono": "+52 834 555 0200",
+        "metodos_pago": ["transferencia", "efectivo"],
     },
     {
         "id": "t-unidos-pacifico",
@@ -447,10 +480,11 @@ TRANSPORTISTAS: list[Transportista] = [
         "ubicacion": {"lat": 19.36, "lon": -104.65},
         "disposicion_a_negociar": 2,
         "puntualidad": 2,
-        "tarifa_referencia": 462,
+        "tarifa_referencia": 9250,
         "tasa_aceptacion_general": 0.82,
         "tasa_aceptacion_corto_plazo": 0.54,
         "telefono": "+52 314 555 0261",
+        "metodos_pago": ["transferencia", "credito_30_dias"],
     },
 ]
 

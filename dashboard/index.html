@@ -781,9 +781,9 @@ body.foco #vista-res { display: block; flex: 1; min-height: 0; overflow-y: auto;
           <span class="campo__e" id="e-hora" hidden></span>
         </div>
         <div class="campo campo--w">
-          <label class="label" for="f-tope">Precio máximo (USD)</label>
+          <label class="label" for="f-tope">Precio máximo (MXN)</label>
           <input id="f-tope" name="tope" type="number" min="1" step="1" placeholder="0" class="mono" required>
-          <span class="campo__n">Número entero mayor a cero. Volta no puede comprometer un dólar por encima.</span>
+          <span class="campo__n">Número entero mayor a cero. Volta no puede comprometer un peso por encima.</span>
           <span class="campo__e" id="e-tope" hidden></span>
         </div>
       </div>
@@ -964,14 +964,14 @@ function esperarCommitmentReal(m, ll) {
 }
 
 const CARRIERS = [
-  { id:"tpa", nombre:"Transportes Pacífico",   chofer:"Diego Salas",    tel:"+52 314 118 4402", score:4.2, viajes:38,  tarifa:410,  flex:0.03 },
-  { id:"trn", nombre:"Transportes del Norte",  chofer:"Juan Pérez",     tel:"+52 314 226 7719", score:4.7, viajes:112, tarifa:430,  flex:0.06 },
-  { id:"cvl", nombre:"Carga Veloz",            chofer:"Sofía Nava",     tel:"+52 33 3841 2260", score:4.3, viajes:64,  tarifa:438,  flex:0.07 },
-  { id:"fba", nombre:"Fletes Bahía",           chofer:"Ramón Ortiz",    tel:"+52 314 337 9080", score:4.4, viajes:71,  tarifa:445,  flex:0.04 },
-  { id:"acl", nombre:"Autotransportes Colima", chofer:"Marta Ruiz",     tel:"+52 312 445 1123", score:4.5, viajes:95,  tarifa:470,  flex:0.09 },
-  { id:"occ", nombre:"Occidente Cargo",        chofer:"Hugo Delgado",   tel:"+52 33 3612 8845", score:4.1, viajes:52,  tarifa:455,  flex:0.05 },
-  { id:"lgm", nombre:"Logística Manzanillo",   chofer:"Elena Cárdenas", tel:"+52 314 554 3301", score:4.6, viajes:88,  tarifa:510, flex:0.12 },
-  { id:"exp", nombre:"Transportes Express",    chofer:"Beto Miranda",   tel:"+52 314 660 2214", score:3.9, viajes:23,  tarifa:590, flex:0.02 },
+  { id:"tpa", nombre:"Transportes Pacífico",   chofer:"Diego Salas",    tel:"+52 314 118 4402", score:4.2, viajes:38,  tarifa:8200,  flex:0.03 },
+  { id:"trn", nombre:"Transportes del Norte",  chofer:"Juan Pérez",     tel:"+52 314 226 7719", score:4.7, viajes:112, tarifa:8600,  flex:0.06 },
+  { id:"cvl", nombre:"Carga Veloz",            chofer:"Sofía Nava",     tel:"+52 33 3841 2260", score:4.3, viajes:64,  tarifa:8750,  flex:0.07 },
+  { id:"fba", nombre:"Fletes Bahía",           chofer:"Ramón Ortiz",    tel:"+52 314 337 9080", score:4.4, viajes:71,  tarifa:8900,  flex:0.04 },
+  { id:"acl", nombre:"Autotransportes Colima", chofer:"Marta Ruiz",     tel:"+52 312 445 1123", score:4.5, viajes:95,  tarifa:9400,  flex:0.09 },
+  { id:"occ", nombre:"Occidente Cargo",        chofer:"Hugo Delgado",   tel:"+52 33 3612 8845", score:4.1, viajes:52,  tarifa:9100,  flex:0.05 },
+  { id:"lgm", nombre:"Logística Manzanillo",   chofer:"Elena Cárdenas", tel:"+52 314 554 3301", score:4.6, viajes:88,  tarifa:10200, flex:0.12 },
+  { id:"exp", nombre:"Transportes Express",    chofer:"Beto Miranda",   tel:"+52 314 660 2214", score:3.9, viajes:23,  tarifa:11800, flex:0.02 },
 ];
 
 const estado = { mandatos: [], commitments: [], llamadas: [], escalaciones: [] };
@@ -1002,7 +1002,7 @@ const MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov"
 const MESES_L = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 const DIAS = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
 
-/* Montos en USD. Sin conversión de divisa: los importes ya vienen en dólares
+/* Montos en MXN. Sin conversión de divisa: los importes ya vienen en pesos
    desde el backend, acá sólo se les da formato (miles con coma, sin decimales). */
 const moneda = n => "$" + Math.round(n).toLocaleString("en-US");
 const fechaCorta = iso => { const [, m, d] = iso.split("-"); return `${Number(d)} ${MESES[Number(m)-1]}`; };
@@ -2329,9 +2329,9 @@ setInterval(() => {
     "Día de retiro": "Pickup day",
     "Franja desde": "Window from",
     "Franja hasta": "Window to",
-    "Precio máximo (USD)": "Maximum price (USD)",
-    "Número entero mayor a cero. Volta no puede comprometer un dólar por encima.":
-      "Whole number greater than zero. Volta cannot commit a dollar above it.",
+    "Precio máximo (MXN)": "Maximum price (MXN)",
+    "Número entero mayor a cero. Volta no puede comprometer un peso por encima.":
+      "Whole number greater than zero. Volta cannot commit a peso above it.",
     "Cancelar": "Cancel",
     "Autorizar y empezar a llamar": "Authorize and start calling",
     "Modo resolución": "Resolution mode",
