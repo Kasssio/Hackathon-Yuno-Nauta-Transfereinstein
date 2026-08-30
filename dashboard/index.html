@@ -837,7 +837,8 @@ async function crearMandato(d) {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ operacion_id: op.id, tope_precio: d.tope,
       ventana_inicio: d.dia, ventana_fin: d.dia,
-      condiciones: [`Franja horaria ${d.desde}–${d.hasta}`],
+      horario_inicio: d.desde, horario_fin: d.hasta,
+      condiciones: [],
       vigente_hasta: new Date(Date.now() + 12 * 3600e3).toISOString() }),
   }).then(r => r.json());
   dispararRondaDeLlamadas(op, d);
@@ -860,9 +861,13 @@ async function escribirMandatoEnBackend(d, m) {
     }).then(r => r.json());
     await fetch(`${API}/mandatos`, {
       method: "POST", headers: { "Content-Type": "application/json" },
+      // La franja va en horario_inicio/horario_fin, que es lo que lee
+      // check_mandato. Antes viajaba como texto libre en condiciones y
+      // Volta nunca se enteraba del horario.
       body: JSON.stringify({ operacion_id: op.id, tope_precio: d.tope,
         ventana_inicio: d.dia, ventana_fin: d.dia,
-        condiciones: [`Franja horaria ${d.desde}–${d.hasta}`],
+        horario_inicio: d.desde, horario_fin: d.hasta,
+        condiciones: [],
         vigente_hasta: new Date(Date.now() + 12 * 3600e3).toISOString() }),
     });
     m.backend_operacion_id = op.id;
@@ -892,8 +897,8 @@ async function abrirLlamadaReal(m, carrier) {
     console.log("[llamada real]", r);
     ll.fase = "negociando";
     ll.fases.push({ k: "Sonando", ts: Date.now() });
-    di(ll, "agent", "Llamando por teléfono al transportista…");
     ensuciar();
+    seguirTranscripcionReal(ll);
   } catch (e) {
     console.error("[llamada real] no se pudo marcar:", e);
     ll.fase = "rechazada";
@@ -903,6 +908,22 @@ async function abrirLlamadaReal(m, carrier) {
   }
 
   esperarCommitmentReal(m, ll);
+}
+
+// La transcripcion de la llamada real llega del server de voz y se vuelca
+// en los mismos turnos que usan las simuladas, para que se vea igual.
+function seguirTranscripcionReal(ll) {
+  let vistos = 0;
+  const t = setInterval(async () => {
+    if (ll.fin) return clearInterval(t);
+    try {
+      const { transcripcion } = await fetch(`${VOZ}/call/status`).then(r => r.json());
+      if (!transcripcion || transcripcion.length <= vistos) return;
+      for (const turno of transcripcion.slice(vistos)) di(ll, turno.role, turno.text);
+      vistos = transcripcion.length;
+      ensuciar();
+    } catch (e) { /* server de voz abajo: se reintenta */ }
+  }, 1500);
 }
 
 // Poll al backend hasta que aparezca el commitment de la llamada real.

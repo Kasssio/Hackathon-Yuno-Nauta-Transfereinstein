@@ -6,7 +6,11 @@
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
-export function crearManejadorDeTools(callId: string, alEscalar?: (motivo: string) => void) {
+export function crearManejadorDeTools(
+  callId: string,
+  alEscalar?: (motivo: string) => void,
+  alCortar?: (motivo: string) => void
+) {
   let operacionActual: any = null;
   let candidatoActual: any = null;
   let candidatosRestantes: number | null = null;
@@ -21,7 +25,12 @@ export function crearManejadorDeTools(callId: string, alEscalar?: (motivo: strin
     if (operacionActual) return operacionActual;
     const ops = await (await fetch(`${BACKEND_URL}/operaciones`)).json();
     if (!ops.length) throw new Error("no hay ninguna operación creada");
-    const operacion = ops[0];
+    // La MAS RECIENTE, no la primera: con ops[0] Volta leia el mandato del
+    // seed en vez del que el operador acaba de cargar en el dashboard, y el
+    // commitment terminaba escrito contra la operacion equivocada.
+    const operacion = [...ops].sort(
+      (a: any, b: any) => new Date(b.creado_en).getTime() - new Date(a.creado_en).getTime()
+    )[0];
     const mandato = await (await fetch(`${BACKEND_URL}/operaciones/${operacion.id}/mandato`)).json();
     operacionActual = { operacion, mandato };
     return operacionActual;
@@ -165,6 +174,7 @@ export function crearManejadorDeTools(callId: string, alEscalar?: (motivo: strin
 
     if (name === "end_call") {
       console.log("[end_call]", args.motivo);
+      alCortar?.(args.motivo || "");
       return {
         ok: true,
         instruccion:

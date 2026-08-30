@@ -76,6 +76,24 @@ const twilioPost = (recurso: string, campos: Record<string, string>) =>
 // Nombre de la sala de la llamada en curso. Una sola llamada a la vez, que
 // es lo que necesita la demo.
 let salaActual: string | null = null;
+let twilioCallSid: string | null = null;
+
+// Colgar de verdad: se corta la pata de Twilio (el telefono) y la de
+// OpenAI. Sin esto end_call solo hacia que Volta se despidiera de palabra
+// y la llamada quedaba abierta hasta que cortaba el humano.
+async function colgarLlamada(callId: string) {
+  if (twilioCallSid) {
+    await twilioPost(`/Calls/${twilioCallSid}.json`, { Status: "completed" })
+      .then((r) => console.log("[colgar] twilio ->", r.status))
+      .catch((e) => console.error("[colgar] twilio", e.message));
+  }
+  await fetch(`https://api.openai.com/v1/realtime/calls/${callId}/hangup`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+  })
+    .then((r) => console.log("[colgar] openai ->", r.status))
+    .catch((e) => console.error("[colgar] openai", e.message));
+}
 
 // Camino directo: cadena de dos patas. Es el que venia funcionando y queda
 // como fallback si la conferencia da problemas.
@@ -149,6 +167,7 @@ app.post("/call/start", async (req, res) => {
       }),
     });
     const data: any = await r.json();
+    if (data.sid) twilioCallSid = data.sid;
     console.log("[twilio] llamando a", to, "->", r.status, data.sid ?? data.message);
     res.status(r.status).json({ sid: data.sid, to, error: data.message });
   } catch (e: any) {
@@ -165,6 +184,7 @@ app.post("/openai/webhook", async (req, res) => {
 
   const callId = ev.data.call_id;
   console.log("[sip] llamada entrante", callId);
+  transcripcion = [];
 
   const r = await fetch(`https://api.openai.com/v1/realtime/calls/${callId}/accept`, {
     method: "POST",
@@ -181,8 +201,12 @@ let escalacion: {
   activa: boolean; motivo: string; resumen: string; ts: number; atendida: boolean;
 } = { activa: false, motivo: "", resumen: "", ts: 0, atendida: false };
 
+// Transcripcion de la llamada real, para que el dashboard la muestre al
+// lado de las simuladas.
+let transcripcion: { role: string; text: string; ts: number }[] = [];
+
 app.get("/call/status", (_req, res) => {
-  res.json({ sala: salaActual, escalacion });
+  res.json({ sala: salaActual, escalacion, transcripcion });
 });
 
 // Handle de la llamada viva, para poder callar/despertar a Volta desde los
@@ -217,6 +241,7 @@ function controlarLlamada(callId: string) {
   // Se pone en true al escalar; cuando termina la frase de traspaso, Volta
   // se calla. Sin esto se metería a hablar arriba de los dos humanos.
   let esperandoFraseDeTraspaso = false;
+  let esperandoFraseDeCierre = false;
 
   const onToolCall = crearManejadorDeTools(callId, (motivo) => {
     esperandoFraseDeTraspaso = true;
@@ -235,7 +260,10 @@ function controlarLlamada(callId: string) {
           "ofreció, dónde está el desacuerdo, y qué falta cerrar.",
       },
     });
+  }, () => {
+    esperandoFraseDeCierre = true;
   });
+
   const ws = new WebSocket(`wss://api.openai.com/v1/realtime?call_id=${callId}`, {
     headers: { Authorization: `Bearer ${OPENAI_KEY}` },
   });
@@ -269,27 +297,69 @@ function controlarLlamada(callId: string) {
     despertar: () => { turnos(true); console.log("[escalacion] Volta vuelve a hablar"); },
   };
 
+  // Apertura en dos tiempos: primero levanta contexto en silencio, despues
+  // saluda. Recien cuando termino de saludar se habilitan los turnos
+  // automaticos, asi la conversacion siempre la abre Volta.
+  let apertura: "contexto" | "saludo" | "listo" = "contexto";
+
+  // El contexto se resuelve del lado del server y se le inyecta al prompt
+  // antes de que hable. Antes Volta lo levantaba con tres tool calls, o sea
+  // tres ciclos de respuesta: 5 a 8 segundos de silencio despues de que el
+  // transportista atendia, que el llenaba diciendo "hola".
+  async function abrirLlamada() {
+    let ctx = "";
+    try {
+      const [op, carriers, mandato]: any = await Promise.all([
+        onToolCall("get_operacion_actual", {}),
+        onToolCall("find_carriers", { limite: 3 }),
+        onToolCall("check_mandato", {}),
+      ]);
+      const elegido = carriers?.candidatos?.[0];
+      const horario =
+        mandato?.horario_inicio && mandato?.horario_fin
+          ? ` entre las ${mandato.horario_inicio} y las ${mandato.horario_fin}`
+          : "";
+      const fecha =
+        mandato?.ventana_inicio === mandato?.ventana_fin
+          ? `el ${mandato?.ventana_inicio}`
+          : `entre el ${mandato?.ventana_inicio} y el ${mandato?.ventana_fin}`;
+
+      ctx =
+        `\n\nCONTEXTO DE ESTA LLAMADA (ya resuelto, no lo consultes de nuevo para abrir)\n` +
+        `Estás llamando vos a: ${elegido?.nombre ?? "el transportista"}.\n` +
+        `Cliente: ${op?.cliente}. Contenedor ${op?.contenedor_id}, de ${op?.puerto_origen} a ${op?.destino}.\n` +
+        `Retiro: ${fecha}${horario}. Tope: ${mandato?.tope_precio} dólares.\n` +
+        `ARRANCÁ VOS: saludá a ${elegido?.nombre ?? "el transportista"} por su nombre, presentate ` +
+        `como Volta, decí en una frase de qué transporte se trata y preguntá si tiene ` +
+        `disponibilidad para esa fecha y ese horario. Breve, una idea. Nunca preguntes qué ` +
+        `necesita la contraparte: sos vos quien llama y quien pide.`;
+    } catch (e: any) {
+      console.error("[apertura] no se pudo precargar contexto:", e.message);
+    }
+
+    // El contexto va al prompt de sesión, no como override de la respuesta:
+    // así el saludo sale con el prompt completo, no reemplazado.
+    enviar({
+      type: "session.update",
+      session: { type: "realtime", instructions: sessionConfig.instructions + ctx },
+    });
+    apertura = "saludo";
+    enviar({ type: "response.create" });
+  }
+
   ws.on("open", () => console.log("[sip] control abierto", callId));
 
   ws.on("message", async (raw) => {
     const ev = JSON.parse(raw.toString());
 
     if (ev.type === "session.created") {
-      enviar({
-        type: "response.create",
-        response: {
-          instructions:
-            "La llamada recién se conectó — todavía no habló nadie, ni vos ni la contraparte. " +
-            "Antes de decir una sola palabra, llamá en orden a get_operacion_actual, después a " +
-            "find_carriers, y después a check_mandato. No hables todavía: esta respuesta es solo " +
-            "para levantar ese contexto. find_carriers te va a devolver varios candidatos — para " +
-            "ESTA llamada en particular, tratá al primero de la lista (el mejor puntaje) como el " +
-            "transportista específico que estás llamando ahora mismo. Con esos resultados vas a " +
-            "tener de qué transporte se trata, a quién estás llamando, y tu mandato vigente — " +
-            "recién en tu próximo turno abrí la llamada con tu saludo estándar, dirigido a ese " +
-            "transportista por nombre.",
-        },
-      });
+      // Volta abre SIEMPRE la conversacion. Arranca con las respuestas
+      // automaticas apagadas: si el transportista dice "hola?" antes de que
+      // Volta termine de levantar contexto, el modelo respondia a eso y
+      // perdia el encuadre de que el es quien esta llamando.
+      turnos(false);
+      setTimeout(() => abrirLlamada(), 1200);
+      return;
     }
 
     if (ev.type === "response.done" && ev.response.metadata?.topic === "resumen_escalacion") {
@@ -301,9 +371,11 @@ function controlarLlamada(callId: string) {
 
     if (ev.type === "conversation.item.input_audio_transcription.completed") {
       console.log("[transportista]", ev.transcript);
+      if (ev.transcript?.trim()) transcripcion.push({ role: "user", text: ev.transcript, ts: Date.now() });
     }
     if (ev.type === "response.output_audio_transcript.done") {
       console.log("[volta]", ev.transcript);
+      if (ev.transcript?.trim()) transcripcion.push({ role: "agent", text: ev.transcript, ts: Date.now() });
     }
 
     if (ev.type === "response.done") {
@@ -327,13 +399,30 @@ function controlarLlamada(callId: string) {
           item: { type: "function_call_output", call_id: item.call_id, output: JSON.stringify(result) },
         });
       }
-      if (hubo) enviar({ type: "response.create" });
+      // Durante la apertura el encadenado lo maneja la secuencia de abajo,
+      // no el loop de tools.
+      if (hubo && apertura === "listo") enviar({ type: "response.create" });
+
+      // Termino de saludar -> recien ahi se habilitan los turnos automaticos.
+      if (apertura === "saludo" && !hubo) {
+        apertura = "listo";
+        turnos(true);
+        console.log("[apertura] Volta saludó, turnos habilitados");
+      }
 
       // La frase de traspaso ya salió al aire: ahora sí Volta se calla y
       // queda escuchando a los dos humanos.
       if (esperandoFraseDeTraspaso && !hubo) {
         esperandoFraseDeTraspaso = false;
         llamadaViva?.callarse();
+      }
+
+      // Se despidió: ahora cuelga de verdad. El delay deja que termine de
+      // salir el audio de la despedida antes de cortar la linea.
+      if (esperandoFraseDeCierre && !hubo) {
+        esperandoFraseDeCierre = false;
+        console.log("[colgar] cortando en 2s");
+        setTimeout(() => colgarLlamada(callId), 2000);
       }
     }
 
