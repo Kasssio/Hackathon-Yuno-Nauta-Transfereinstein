@@ -3,6 +3,7 @@ let turn = 0;
 let userStoppedAt = null;
 let analyser, analyserData, latencyRAF = null;
 
+let eagernessActual = "auto";
 let escalado = false;
 let esperandoFraseDeTraspaso = false;
 let motivoEscalacion = "";
@@ -297,6 +298,7 @@ function setTurnDetection(activo) {
           transcription: { model: "gpt-live-transcribe" },
           turn_detection: {
             type: "semantic_vad",
+            eagerness: eagernessActual,
             create_response: activo,
             interrupt_response: activo,
           },
@@ -430,7 +432,10 @@ async function connect() {
   candidatosRestantes = null;
   cotizacionesRegistradas.length = 0;
   try {
-    const key = (await (await fetch("/session", { method: "POST" })).json()).value;
+    const sesion = await (await fetch("/session", { method: "POST" })).json();
+    const key = sesion.value;
+    eagernessActual = sesion.session?.audio?.input?.turn_detection?.eagerness ?? "auto";
+    console.log("[vad] eagerness:", eagernessActual);
 
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     pc = new RTCPeerConnection();

@@ -2,7 +2,18 @@
   "name": "volta-voice-spike",
   "private": true,
   "type": "module",
-  "scripts": { "dev": "tsx server.ts" },
-  "dependencies": { "dotenv": "^16.4.5", "express": "^4.21.2" },
-  "devDependencies": { "@types/express": "^5.0.0", "@types/node": "^22.10.2", "tsx": "^4.19.2" }
+  "scripts": {
+    "dev": "tsx server.ts"
+  },
+  "dependencies": {
+    "@types/ws": "^8.18.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2"
+  }
 }
