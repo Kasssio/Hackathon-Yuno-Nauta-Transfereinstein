@@ -64,10 +64,16 @@ body {
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #2c343c; border-radius: 100px; border: 3px solid transparent; background-clip: content-box; }
-::-webkit-scrollbar-thumb:hover { background: #3a444e; background-clip: content-box; }
+/* Varias reglas de acá declaran `display`, y eso le gana al display:none que
+   el navegador le da a [hidden]. Sin esto, un panel oculto se sigue viendo. */
+[hidden] { display: none !important; }
+
+/* Scrollbar fina, al tono del fondo hundido */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #333d46; border-radius: 100px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #445059; background-clip: content-box; }
 ::-webkit-scrollbar-track { background: transparent; }
+* { scrollbar-width: thin; scrollbar-color: #333d46 transparent; }
 
 svg { flex: none; }
 
@@ -82,6 +88,12 @@ svg { flex: none; }
   gap: var(--gap); padding: 0 var(--gap) var(--gap); min-height: 0;
 }
 .columna { display: flex; flex-direction: column; gap: var(--gap); min-height: 0; }
+
+/* Columna derecha: las dos secciones se reparten la altura en partes iguales
+   y no crecen con su contenido. `flex-basis: 0` es lo que hace el reparto
+   estático — con `auto` cada panel arranca del alto de su lista y una lista
+   larga de escalaciones vuelve a empujar al historial fuera de pantalla. */
+.columna--der > .panel { flex: 1 1 0; min-height: 0; }
 
 .panel {
   background: var(--surface); border: 1px solid var(--borde);
@@ -523,6 +535,47 @@ body.foco #vista-res { display: block; flex: 1; min-height: 0; overflow-y: auto;
 }
 .caso-chip__p { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 
+/* -- Control de llamada del operador (una por mandato) -------------------- */
+.btn-llamar {
+  display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%;
+  padding: 12px 14px; border-radius: var(--r); cursor: pointer; border: 0;
+  font-family: inherit; font-size: 13.5px; font-weight: 700; letter-spacing: -.015em;
+  background: linear-gradient(145deg, #4ade9a, #1ea86e); color: #04231a;
+  box-shadow: var(--nm-suave), inset 0 1px 0 rgba(255,255,255,.28);
+  transition: filter .16s, transform .12s;
+}
+.btn-llamar:hover { filter: brightness(1.06); }
+.btn-llamar:active { transform: translateY(1px); box-shadow: var(--nm-hueco); }
+
+.enllamada {
+  display: flex; align-items: center; gap: 10px; padding: 10px 11px;
+  border-radius: var(--r); background: var(--well); box-shadow: var(--nm-hueco);
+  animation: entraLl .26s cubic-bezier(.25,.85,.3,1);
+}
+@keyframes entraLl { from { opacity: 0; transform: scale(.97) } to { opacity: 1; transform: none } }
+
+.enllamada__izq { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
+.punto-ll { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: none; animation: latido 1.3s ease-in-out infinite; }
+.punto-ll--hold { background: var(--warn); animation: none; }
+.punto-ll--mute { background: var(--bad); }
+.enllamada__k { font-size: 9.5px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); }
+.enllamada__c { font-size: 17px; font-weight: 800; letter-spacing: -.035em; line-height: 1.1; }
+
+.ctrl {
+  width: 38px; height: 38px; border-radius: 50%; flex: none; display: grid; place-items: center;
+  cursor: pointer; border: 1px solid var(--borde); background: var(--surface-2); color: var(--ink-2);
+  box-shadow: var(--nm-suave); transition: background .16s, color .16s, box-shadow .16s;
+}
+.ctrl:hover { background: #2c353d; color: var(--ink); }
+.ctrl:active { box-shadow: var(--nm-hueco); }
+.ctrl--on { background: var(--warn-dim); color: var(--warn); border-color: rgba(251,146,60,.45); box-shadow: var(--nm-hueco); }
+.ctrl--mute { background: var(--bad-dim); color: var(--bad); border-color: rgba(248,113,113,.45); box-shadow: var(--nm-hueco); }
+.ctrl--cortar {
+  background: linear-gradient(145deg, #f4635c, #c73833); color: #fff; border-color: transparent;
+  box-shadow: var(--nm-suave), 0 0 14px rgba(248,113,113,.28);
+}
+.ctrl--cortar:hover { filter: brightness(1.08); background: linear-gradient(145deg, #f4635c, #c73833); color: #fff; }
+
 .res-vacio {
   text-align: center; padding: 70px 20px; color: var(--ink-3);
   display: flex; flex-direction: column; align-items: center; gap: 14px;
@@ -543,12 +596,45 @@ body.foco #vista-res { display: block; flex: 1; min-height: 0; overflow-y: auto;
 .res-alerta__q { font-size: 17px; font-weight: 800; letter-spacing: -.032em; line-height: 1.32; margin-top: 4px; }
 .res-alerta__d { font-size: 12.5px; color: var(--ink-2); line-height: 1.55; margin-top: 6px; }
 
-.res-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+/* align-items: stretch para que las dos tarjetas de arriba queden a la misma
+   altura: la más alta manda y la otra rellena. */
+.res-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; }
 
-.res-caja { border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--borde); box-shadow: var(--nm-suave); overflow: hidden; }
-.res-caja__h { display: flex; align-items: center; gap: 7px; padding: 12px 15px 10px; border-bottom: 1px solid var(--borde); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.res-caja {
+  border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--borde);
+  box-shadow: var(--nm-suave); overflow: hidden; display: flex; flex-direction: column;
+}
+.res-caja__h { display: flex; align-items: center; gap: 7px; padding: 12px 15px 10px; border-bottom: 1px solid var(--borde); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); flex: none; }
 .res-caja__h svg { color: var(--ink-3); }
 .res-caja__b { padding: 14px 15px 15px; display: flex; flex-direction: column; gap: 11px; }
+.res-caja__b--full { flex: 1; min-height: 0; }
+
+/* -- Contexto de la derivación: estático, para leer en 3 segundos ---------- */
+.resumen {
+  flex: 1; min-height: 190px; display: flex; flex-direction: column;
+  padding: 17px 18px; border-radius: var(--r);
+  background: var(--well); box-shadow: var(--nm-hueco);
+}
+.resumen__l { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.resumen__l li {
+  position: relative; padding-left: 21px;
+  font-size: 13px; line-height: 1.55; color: var(--ink); letter-spacing: -.008em;
+}
+/* Viñetas en el ámbar de las alertas: guían la lectura sin gritar */
+.resumen__l li::before {
+  content: ""; position: absolute; left: 1px; top: 7px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--warn); opacity: .85;
+  box-shadow: 0 0 0 3px rgba(251,146,60,.12);
+}
+.resumen__pie {
+  margin-top: auto; padding-top: 15px; border-top: 1px solid var(--borde);
+  font-size: 10.5px; color: var(--ink-3);
+}
+
+/* -- Mandato original, a lo ancho del pie --------------------------------- */
+.res-mandato { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 24px; align-items: center; }
+.res-datos-fila { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 10px; }
 
 .res-tope { display: flex; align-items: baseline; gap: 9px; }
 .res-tope__v { font-size: 30px; font-weight: 800; letter-spacing: -.05em; color: var(--warn); line-height: 1; }
@@ -563,28 +649,6 @@ body.foco #vista-res { display: block; flex: 1; min-height: 0; overflow-y: auto;
 }
 .res-tel svg { color: var(--accent); }
 .res-tel__v { font-size: 15px; font-weight: 700; letter-spacing: -.02em; }
-
-/* Mini-historial del caso */
-.res-tl { display: flex; flex-direction: column; }
-.res-ev {
-  display: grid; grid-template-columns: auto auto minmax(0,1fr) auto auto; gap: 3px 13px;
-  align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--borde);
-}
-.res-ev:last-child { border-bottom: 0; }
-.res-ev__h { font-size: 11px; color: var(--ink-3); grid-row: span 2; }
-.res-ev__av { grid-row: span 2; }
-.res-ev__n { font-size: 13px; font-weight: 700; letter-spacing: -.02em; }
-.res-ev__e { grid-column: 3; font-size: 11.5px; color: var(--ink-3); }
-.res-ev__o { grid-row: span 2; font-size: 16px; font-weight: 800; letter-spacing: -.04em; }
-.res-ev__v { grid-row: span 2; }
-.res-ev--sys { grid-template-columns: auto minmax(0,1fr) auto; }
-.res-ev__sys { display: flex; align-items: center; gap: 9px; grid-column: 2; }
-.res-ev__sysi { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; flex: none; background: var(--bad-dim); color: var(--bad); }
-
-.chip-v { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 100px; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; border: 1px solid; white-space: nowrap; }
-.chip-v--no { color: var(--bad); background: var(--bad-dim); border-color: rgba(248,113,113,.32); }
-.chip-v--si { color: var(--good); background: var(--good-dim); border-color: rgba(52,211,153,.32); }
-.chip-v--h  { color: var(--warn); background: var(--warn-dim); border-color: rgba(251,146,60,.32); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
@@ -649,7 +713,7 @@ body.foco #vista-res { display: block; flex: 1; min-height: 0; overflow-y: auto;
       </section>
     </div>
 
-    <div class="columna">
+    <div class="columna columna--der">
       <section class="panel panel--esc" id="panel-esc" hidden>
         <div class="panel__head">
           <div class="head__izq"><span id="ico-alerta"></span><span class="label">Escalado a un humano</span></div>
@@ -713,12 +777,13 @@ body.foco #vista-res { display: block; flex: 1; min-height: 0; overflow-y: auto;
           <input id="f-hasta" name="hasta" type="time" value="12:00" required>
         </div>
         <div class="campo campo--w" style="margin-top:-6px">
+          <span class="campo__n" id="aviso-hora" hidden></span>
           <span class="campo__e" id="e-hora" hidden></span>
         </div>
         <div class="campo campo--w">
-          <label class="label" for="f-tope">Precio máximo (MXN)</label>
-          <input id="f-tope" name="tope" type="number" min="0" step="1" value="9000" class="mono" required>
-          <span class="campo__n">Número entero, sin negativos. Volta no puede comprometer un peso por encima.</span>
+          <label class="label" for="f-tope">Precio máximo (USD)</label>
+          <input id="f-tope" name="tope" type="number" min="1" step="1" placeholder="0" class="mono" required>
+          <span class="campo__n">Número entero mayor a cero. Volta no puede comprometer un dólar por encima.</span>
           <span class="campo__e" id="e-tope" hidden></span>
         </div>
       </div>
@@ -809,13 +874,15 @@ const MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov"
 const MESES_L = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 const DIAS = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
 
-const moneda = n => "$" + Math.round(n).toLocaleString("es-MX");
+/* Montos en USD. Sin conversión de divisa: los importes ya vienen en dólares
+   desde el backend, acá sólo se les da formato (miles con coma, sin decimales). */
+const moneda = n => "$" + Math.round(n).toLocaleString("en-US");
 const fechaCorta = iso => { const [, m, d] = iso.split("-"); return `${Number(d)} ${MESES[Number(m)-1]}`; };
 function fechaLarga(iso) {
   const [a, m, d] = iso.split("-").map(Number);
   return `${DIAS[new Date(a, m-1, d).getDay()]} ${d} de ${MESES_L[m-1]}`;
 }
-const horaDe = ms => new Date(ms).toLocaleTimeString("es-MX", { hour:"2-digit", minute:"2-digit", hour12:false });
+const horaDe = ms => new Date(ms).toLocaleTimeString("en-US", { hour:"2-digit", minute:"2-digit", hour12:false });
 function cronometro(desde, hasta) {
   const s = Math.max(0, Math.floor(((hasta ?? Date.now()) - desde) / 1000));
   return `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
@@ -845,6 +912,11 @@ const ICONOS = {
   wallet:  '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>',
   flecha:  '<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>',
+  mic:     '<rect x="9" y="2" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/>',
+  micOff:  '<path d="M2 2 22 22"/><path d="M9 9v3a3 3 0 0 0 5.1 2.1"/><path d="M15 9.3V5a3 3 0 0 0-5.9-.7"/><path d="M19 10v2a7 7 0 0 1-.7 2.9"/><path d="M5 10v2a7 7 0 0 0 10.7 6"/><path d="M12 19v3"/>',
+  pausa:   '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
+  play:    '<path d="m7 4 12 8-12 8z"/>',
+  colgar:  '<path d="M10.7 13.3a16 16 0 0 0 3.4 2.6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.4 19.4 0 0 1-3.3-2.7M5.3 10a19.8 19.8 0 0 1-3.1-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.4 2.1L8.1 9.9"/><path d="M2 2 22 22"/>',
   arribaD: '<path d="M7 17 17 7"/><path d="M7 7h10v10"/>',
   abajoI:  '<path d="M17 7 7 17"/><path d="M17 17H7V7"/>',
   x:       '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
@@ -1101,6 +1173,24 @@ const esNuevo = id => { if (animados.has(id)) return false; animados.add(id); re
 let modoResolucion = false;
 let casoActivo = null;      // id de la escalación que se está resolviendo
 
+/* Llamadas del operador humano, UNA POR MANDATO. Cambiar de pestaña no
+   arrastra el estado: cada caso mira su propia entrada de este Map, y si no
+   tiene ninguna se muestra el botón inicial. La llamada de MDT-010 sigue
+   corriendo aunque el operador se vaya a mirar MDT-003. */
+const llamadasOp = new Map();   // mandato_id -> { inicio, mute, hold }
+
+/* Firma del contenido de la vista enfocada: sin esto, cada evento de la
+   simulación de fondo reconstruiría el panel y haría titilar los controles. */
+let firmaRes = null;
+function firmaResolucion() {
+  const ll = llamadasOp.get(estado.escalaciones.find(x => x.id === casoActivo)?.mandato_id);
+  return [
+    estado.escalaciones.map(e => e.id).join(","),
+    casoActivo,
+    ll ? `${ll.inicio}|${ll.mute}|${ll.hold}` : "-",
+  ].join("::");
+}
+
 function alternarResolucion(on) {
   modoResolucion = on;
   // Al entrar se abre la escalación más reciente, salvo que ya hubiera una elegida.
@@ -1118,8 +1208,11 @@ function render() {
   // En modo resolución el dashboard entero está oculto: no hay para qué
   // reconstruirlo, y al volver se redibuja con el estado del momento.
   if (modoResolucion) {
-    renderResolucion();
+    // Sólo se repinta si cambió algo que se ve acá; el cronómetro lo lleva tick().
+    const f = firmaResolucion();
+    if (f !== firmaRes) { firmaRes = f; renderResolucion(); }
   } else {
+    firmaRes = null;
     renderBrief();
     renderMandatos();
     renderCommitments();
@@ -1132,11 +1225,14 @@ function render() {
 /* Tick liviano: reloj + cronómetros vivos. No reconstruye nada. */
 function tick() {
   const ahora = new Date();
-  texto("reloj-h", ahora.toLocaleTimeString("es-MX", { hour12: false }));
+  texto("reloj-h", ahora.toLocaleTimeString("en-US", { hour12: false }));
   texto("reloj-f", `${ahora.getDate()} ${MESES[ahora.getMonth()]} ${ahora.getFullYear()}`);
   document.querySelectorAll("[data-dur]").forEach(n => {
     n.textContent = cronometro(Number(n.dataset.dur), n.dataset.fin ? Number(n.dataset.fin) : null);
   });
+  // Si el formulario quedó abierto, el piso horario sigue el reloj (sin tocar
+  // lo que el operador haya elegido).
+  if (dlg?.open) aplicarRestriccionHoraria(false);
 }
 
 function renderBrief() {
@@ -1425,27 +1521,14 @@ function renderResolucion() {
   alerta.append(ai, at);
   out.append(alerta);
 
-  /* 2 · Mandato original + perfil del transportista derivado */
+  /* 2 · Arriba: resumen de la llamada (izq) + transportista derivado (der) */
   const cols = el("div", "res-cols");
-
-  if (m) {
-    const caja = el("div", "res-caja");
-    const h = el("div", "res-caja__h");
-    h.append(ico("escudo", 12), document.createTextNode("Mandato original"));
-    const b = el("div", "res-caja__b");
-    const tope = el("div", "res-tope");
-    tope.append(el("div", "res-tope__v mono", moneda(m.tope_precio)), el("div", "res-tope__k", "tope autorizado"));
-    b.append(tope, grid(
-      dato("Mandato", m.id), dato("Contenedor", m.contenedor),
-      dato("Día de retiro", fechaLarga(m.dia), true),
-      dato("Franja horaria", `${m.desde} – ${m.hasta}`),
-      dato("Ruta", `${RUTA.origen} → ${RUTA.destino}`)));
-    caja.append(h, b);
-    cols.append(caja);
-  }
 
   // El transportista de la mejor cotización: con quién conviene volver a hablar.
   const mejor = m ? [...m.cotizaciones].sort((a, b) => a.oferta - b.oferta)[0] : null;
+
+  cols.append(cajaResumen(e, mejor));
+
   if (mejor) {
     const caja = el("div", "res-caja");
     const h = el("div", "res-caja__h");
@@ -1460,7 +1543,7 @@ function renderResolucion() {
     const tel = el("div", "res-tel");
     tel.append(ico("phone", 16), el("div", "res-tel__v mono", mejor.carrier.tel));
 
-    b.append(ch, tel, grid(
+    b.append(ch, tel, controlLlamada(e.mandato_id, mejor.carrier), grid(
       dato("Última oferta", moneda(mejor.oferta)),
       dato("Tarifa de lista", moneda(mejor.carrier.tarifa)),
       dato("Reputación", `${mejor.carrier.score} / 5`),
@@ -1470,68 +1553,130 @@ function renderResolucion() {
   }
   out.append(cols);
 
-  /* 3 · Mini-historial del caso: qué pasó antes de derivar */
-  if (m) {
-    const caja = el("div", "res-caja");
-    const h = el("div", "res-caja__h");
-    h.append(ico("hist", 12), document.createTextNode("Qué pasó en este mandato"));
-    const b = el("div", "res-caja__b");
-    b.style.paddingTop = "4px";
-    const tl = el("div", "res-tl");
-
-    // Sólo las llamadas de ESTE mandato, en orden cronológico.
-    estado.llamadas
-      .filter(l => l.mandato_id === m.id)
-      .sort((a, b2) => a.inicio - b2.inicio)
-      .forEach(l => tl.append(eventoLlamada(l, m)));
-
-    // Y el veredicto del guardrail que cerró el caso.
-    estado.commitments.filter(c => c.mandato_id === m.id).forEach(c => tl.append(eventoGuardrail(c)));
-
-    b.append(tl);
-    caja.append(h, b);
-    out.append(caja);
-  }
+  /* 3 · Abajo, a lo ancho: los límites que el operador no puede cruzar */
+  if (m) out.append(cajaMandato(m));
 
   cont.replaceChildren(top, out);
 }
 
-function eventoLlamada(l, m) {
-  const w = el("div", "res-ev");
-  const dif = l.oferta - m.tope_precio;
+/* Contexto de la derivación: qué pasó entre Volta y el chofer ANTES de que el
+   caso llegara a un humano. Es estático y se lee de un vistazo, justo antes de
+   apretar "Atender llamada" a la derecha.
 
-  w.append(el("div", "res-ev__h mono", horaDe(l.inicio)));
-  const av = avatar(l.chofer, true); av.classList.add("res-ev__av"); w.append(av);
-  w.append(el("div", "res-ev__n", l.chofer));
-  w.append(el("div", "res-ev__o mono", l.oferta ? moneda(l.oferta) : "—"));
+   PLACEHOLDER: el texto está maquetado a mano. Las cifras y la ruta salen del
+   caso real para que no contradigan al panel del mandato; el argumento del
+   transportista es de ejemplo hasta que Volta genere el resumen de verdad. */
+function cajaResumen(e, mejor) {
+  const m = estado.mandatos.find(x => x.id === e.mandato_id);
+  const caja = el("div", "res-caja");
 
-  const chip = el("span", "chip-v " + (dif > 0 ? "chip-v--no" : "chip-v--si"),
-    dif > 0 ? `+${moneda(dif)} sobre el tope` : "dentro del tope");
-  const vc = el("div", "res-ev__v");
-  vc.append(chip);
-  w.append(vc);
+  const h = el("div", "res-caja__h");
+  h.append(ico("chat", 12), document.createTextNode("Resumen de negociación con Volta (IA)"));
 
-  const sub = el("div", "res-ev__e");
-  sub.append(document.createTextNode(`${l.carrier.nombre} · ${l.resumen}`));
-  if (l.pide_humano) {
-    sub.append(document.createTextNode(" · "));
-    sub.append(el("span", "chip-v chip-v--h", "pidió humano"));
-  }
-  w.append(sub);
-  return w;
+  const b = el("div", "res-caja__b res-caja__b--full");
+  const panel = el("div", "resumen");
+
+  const puntos = [
+    `El transportista rechazó la oferta inicial por el tope de ${m ? moneda(m.tope_precio) : "—"}.`,
+    `Argumenta demoras por reparaciones en la ruta ${RUTA.origen}–${RUTA.destino}.`,
+    `Mantiene una postura firme en su contraoferta de ${mejor ? moneda(mejor.oferta) : "—"}.`,
+    "Volta derivó la llamada al superar el margen de negociación automatizado.",
+  ];
+
+  const lista = el("ul", "resumen__l");
+  puntos.forEach(p => lista.append(el("li", null, p)));
+  panel.append(lista);
+
+  panel.append(el("div", "resumen__pie",
+    `Resumen generado por Volta al cerrar la negociación · ${horaDe(e.ts)}`));
+
+  b.append(panel);
+  caja.append(h, b);
+  return caja;
 }
 
-function eventoGuardrail(c) {
-  const w = el("div", "res-ev res-ev--sys");
-  w.append(el("div", "res-ev__h mono", horaDe(c.creado_en)));
-  const caja = el("div", "res-ev__sys");
-  const i = el("div", "res-ev__sysi");
-  i.append(ico(c.aprobado ? "check" : "x", 14));
+/* Mandato original, a lo ancho del pie: el tope manda y va primero. */
+function cajaMandato(m) {
+  const caja = el("div", "res-caja");
+  const h = el("div", "res-caja__h");
+  h.append(ico("escudo", 12), document.createTextNode("Mandato original"));
+
+  const b = el("div", "res-caja__b");
+  const fila = el("div", "res-mandato");
+
+  const tope = el("div", "res-tope");
+  tope.append(el("div", "res-tope__v mono", moneda(m.tope_precio)), el("div", "res-tope__k", "tope autorizado"));
+
+  const datos = el("div", "res-datos-fila");
+  datos.append(
+    dato("Mandato", m.id), dato("Contenedor", m.contenedor),
+    dato("Día de retiro", fechaLarga(m.dia)),
+    dato("Franja horaria", `${m.desde} – ${m.hasta}`),
+    dato("Ruta", `${RUTA.origen} → ${RUTA.destino}`));
+
+  fila.append(tope, datos);
+  b.append(fila);
+  caja.append(h, b);
+  return caja;
+}
+
+/* --------------------------------------------------------------------------
+   Control de llamada del operador. El estado vive en `llamadasOp` bajo el id
+   del mandato, así cada pestaña es independiente.
+   TODO: hoy sólo simula la UI. Cuando esté el puente con la Realtime API,
+   `iniciar` abre la sesión de voz y `cortar` la cierra.
+   -------------------------------------------------------------------------- */
+function controlLlamada(mandatoId, carrier) {
+  const ll = llamadasOp.get(mandatoId);
+
+  // Cualquier cambio de estado fuerza el repintado de la vista enfocada.
+  const refrescar = () => { firmaRes = null; render(); };
+
+  if (!ll) {
+    const b = el("button", "btn-llamar");
+    b.type = "button";
+    b.append(ico("phone", 16), document.createTextNode(`Atender llamada a ${carrier.chofer}`));
+    b.onclick = () => {
+      llamadasOp.set(mandatoId, { inicio: Date.now(), mute: false, hold: false });
+      refrescar();
+    };
+    return b;
+  }
+
+  const w = el("div", "enllamada");
+
+  const izq = el("div", "enllamada__izq");
+  const punto = el("span", "punto-ll" + (ll.hold ? " punto-ll--hold" : ll.mute ? " punto-ll--mute" : ""));
   const txt = el("div");
-  txt.append(el("div", "res-ev__n", c.aprobado ? `Guardrail aprobó ${c.id}` : `Guardrail rechazó ${c.id}`),
-             el("div", "res-ev__e", c.motivo_rechazo ?? "Dentro del mandato"));
-  caja.append(i, txt);
-  w.append(caja, el("span", "chip-v " + (c.aprobado ? "chip-v--si" : "chip-v--no"), c.aprobado ? "aprobado" : "rechazado"));
+  txt.append(el("div", "enllamada__k", ll.hold ? "En espera" : ll.mute ? "Micrófono silenciado" : "En llamada"));
+  const cron = el("div", "enllamada__c mono");
+  cron.dataset.dur = ll.inicio;              // tick() lo actualiza cada segundo
+  cron.textContent = cronometro(ll.inicio);
+  txt.append(cron);
+  izq.append(punto, txt);
+
+  const btnMute = el("button", "ctrl" + (ll.mute ? " ctrl--mute" : ""));
+  btnMute.type = "button";
+  btnMute.title = ll.mute ? "Activar micrófono" : "Silenciar micrófono";
+  btnMute.setAttribute("aria-label", btnMute.title);
+  btnMute.append(ico(ll.mute ? "micOff" : "mic", 16));
+  btnMute.onclick = () => { ll.mute = !ll.mute; refrescar(); };
+
+  const btnHold = el("button", "ctrl" + (ll.hold ? " ctrl--on" : ""));
+  btnHold.type = "button";
+  btnHold.title = ll.hold ? "Retomar llamada" : "Poner en espera";
+  btnHold.setAttribute("aria-label", btnHold.title);
+  btnHold.append(ico(ll.hold ? "play" : "pausa", 15));
+  btnHold.onclick = () => { ll.hold = !ll.hold; refrescar(); };
+
+  const btnCortar = el("button", "ctrl ctrl--cortar");
+  btnCortar.type = "button";
+  btnCortar.title = "Cortar llamada";
+  btnCortar.setAttribute("aria-label", "Cortar llamada");
+  btnCortar.append(ico("colgar", 16));
+  btnCortar.onclick = () => { llamadasOp.delete(mandatoId); refrescar(); };
+
+  w.append(izq, btnMute, btnHold, btnCortar);
   return w;
 }
 
@@ -1758,6 +1903,61 @@ const isoHoy = () => {
 
 const CAMPOS_ERR = { dia: ["e-dia", "f-dia"], hora: ["e-hora", "f-desde"], tope: ["e-tope", "f-tope"] };
 
+/* --------------------------------------------------------------------------
+   Restricción horaria dependiente de la fecha.
+   Si el día elegido es hoy, la franja no puede arrancar antes de la hora
+   actual; si es a futuro, no hay límite. Se recalcula sola al cambiar la
+   fecha — sin recargar — y también mientras el formulario está abierto, para
+   que el piso no quede viejo si el operador se demora.
+   -------------------------------------------------------------------------- */
+const hhmm = d => `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+const horaAhora = () => hhmm(new Date());
+const esHoy = iso => iso === isoHoy();
+
+function sumarHoras(hora, horas) {
+  const [h, m] = hora.split(":").map(Number);
+  const t = Math.min(h * 60 + m + horas * 60, 23 * 60 + 59);
+  return `${String(Math.floor(t / 60)).padStart(2,"0")}:${String(t % 60).padStart(2,"0")}`;
+}
+
+/** @param corregir si además de restringir hay que mover valores ya inválidos */
+function aplicarRestriccionHoraria(corregir) {
+  const dia = $("f-dia").value;
+  const desde = $("f-desde"), hasta = $("f-hasta"), aviso = $("aviso-hora");
+
+  if (!dia || !esHoy(dia)) {
+    // Condición B: fecha futura. Día completo disponible y el aviso de "hoy"
+    // deja de tener sentido, así que se vacía además de ocultarse.
+    desde.removeAttribute("min");
+    hasta.removeAttribute("min");
+    aviso.hidden = true;
+    aviso.textContent = "";
+    // Los horarios se devuelven al día entero: si venían recortados por la
+    // regla de hoy (ej. 23:03), arrastrarlos a mañana no tendría sentido.
+    if (corregir) { desde.value = "00:00"; hasta.value = "23:59"; }
+    return;
+  }
+
+  // Condición A: hoy. El piso es la hora actual.
+  const ahora = horaAhora();
+  desde.min = ahora;
+  hasta.min = ahora;
+
+  if (ahora >= "23:58") {
+    aviso.textContent = "Hoy ya no queda franja disponible. Elegí una fecha futura.";
+  } else {
+    aviso.textContent = `Para hoy, la franja tiene que empezar después de las ${ahora}.`;
+  }
+  aviso.hidden = false;
+
+  // Sólo se tocan los valores al cambiar de fecha o al abrir: mover el horario
+  // mientras el operador lo está tipeando sería pelearle al usuario.
+  if (corregir) {
+    if (!desde.value || desde.value < ahora) desde.value = ahora;
+    if (!hasta.value || hasta.value <= desde.value) hasta.value = sumarHoras(desde.value, 4);
+  }
+}
+
 function limpiarErrores() {
   Object.values(CAMPOS_ERR).forEach(([eId, iId]) => {
     $(eId).hidden = true;
@@ -1782,10 +1982,19 @@ $("abrir-form").onclick = () => {
   // el caso de que el usuario escriba la fecha a mano.
   f.min = isoHoy();
   if (!f.value || f.value < f.min) f.value = isoHoy();
+  // El tope arranca vacío siempre: heredar el de la carga anterior es
+  // justo el riesgo de autorizar un monto sin mirarlo.
+  $("f-tope").value = "";
   limpiarErrores();
+  aplicarRestriccionHoraria(true);
   dlg.showModal();
 };
 $("cancelar").onclick = () => dlg.close();
+
+// Reactividad: cambiar el día recalcula la franja al instante. Pasar de hoy a
+// mañana vuelve a habilitar todos los horarios sin recargar nada.
+$("f-dia").addEventListener("change", () => { aplicarRestriccionHoraria(true); $("e-hora").hidden = true; });
+$("f-dia").addEventListener("input", () => aplicarRestriccionHoraria(false));
 
 $("form").addEventListener("submit", e => {
   const d = Object.fromEntries(new FormData(e.target));
@@ -1803,16 +2012,33 @@ $("form").addEventListener("submit", e => {
   }
 
   if (!d.desde || !d.hasta) { e.preventDefault(); marcarError("hora", "Completá la franja horaria."); return; }
+
+  // Se compara contra el reloj del momento del envío, no contra el de cuando
+  // se abrió el formulario: si el operador se demoró, la franja pudo vencerse.
+  if (esHoy(d.dia) && d.desde < horaAhora()) {
+    e.preventDefault();
+    marcarError("hora", "Para el día de hoy, la franja horaria debe ser posterior a la hora actual.");
+    aplicarRestriccionHoraria(false);
+    return;
+  }
+
   if (d.hasta <= d.desde) {
     e.preventDefault();
     marcarError("hora", "La franja termina antes de empezar. Revisá los horarios.");
     return;
   }
 
+  // Un tope de 0 (o vacío) no es un mandato válido: Volta no podría cerrar
+  // nada. El backend ya lo rechaza con `gt=0` en models.py.
   const tope = Number(d.tope);
-  if (d.tope === "" || !Number.isInteger(tope) || tope < 0) {
+  if (d.tope.trim() === "") {
     e.preventDefault();
-    marcarError("tope", "El precio máximo tiene que ser un número entero y no negativo.");
+    marcarError("tope", "Ingresá el precio máximo que Volta puede comprometer.");
+    return;
+  }
+  if (!Number.isInteger(tope) || tope <= 0) {
+    e.preventDefault();
+    marcarError("tope", "El precio máximo tiene que ser un número entero mayor a cero.");
     return;
   }
 
