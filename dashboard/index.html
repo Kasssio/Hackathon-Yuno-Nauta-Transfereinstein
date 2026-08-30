@@ -74,9 +74,11 @@ svg { flex: none; }
 /* ==========================================================================
    ESQUELETO
    ========================================================================== */
-.consola { display: grid; grid-template-rows: auto auto minmax(0,1fr); height: 100vh; }
+.consola { display: flex; flex-direction: column; height: 100vh; }
+.principal { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#vista-dash { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .cuerpo {
-  display: grid; grid-template-columns: 340px minmax(0,1fr) 336px;
+  flex: 1; display: grid; grid-template-columns: 340px minmax(0,1fr) 336px;
   gap: var(--gap); padding: 0 var(--gap) var(--gap); min-height: 0;
 }
 .columna { display: flex; flex-direction: column; gap: var(--gap); min-height: 0; }
@@ -439,7 +441,12 @@ dialog.modal[open] { animation: entraModal .28s cubic-bezier(.2,.78,.3,1); }
 .campo input:hover { border-color: var(--borde-alto); }
 .campo input:focus-visible { border-color: var(--accent); outline-offset: 0; }
 .campo__n { font-size: 11px; color: var(--ink-3); line-height: 1.45; }
-.campo__e { font-size: 11.5px; color: var(--bad); font-weight: 600; }
+.campo input.mal { border-color: var(--bad); box-shadow: var(--nm-hueco), 0 0 0 2px rgba(248,113,113,.18); }
+.campo__e {
+  display: flex; align-items: flex-start; gap: 6px;
+  font-size: 11.5px; color: var(--bad); font-weight: 600; line-height: 1.45;
+}
+.campo__e svg { flex: none; margin-top: 2px; }
 
 .ruta-form {
   display: flex; align-items: center; gap: 9px; padding: 11px 13px; border-radius: var(--r);
@@ -455,7 +462,7 @@ dialog.modal[open] { animation: entraModal .28s cubic-bezier(.2,.78,.3,1); }
 /* ==========================================================================
    MODO RESOLUCIÓN — switch + vista enfocada
    ========================================================================== */
-.switch { display: flex; align-items: center; gap: 9px; cursor: pointer; margin-top: 11px; user-select: none; }
+.switch { display: flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; }
 .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
 .switch__pista {
   position: relative; width: 40px; height: 23px; border-radius: 100px; flex: none;
@@ -475,17 +482,54 @@ dialog.modal[open] { animation: entraModal .28s cubic-bezier(.2,.78,.3,1); }
 .switch__txt { font-size: 11.5px; font-weight: 600; color: var(--ink-3); transition: color .28s; }
 .switch input:checked ~ .switch__txt { color: var(--warn); }
 
-/* Colapso de la columna de mandatos y del historial global */
-.cuerpo { transition: grid-template-columns .42s cubic-bezier(.3,.85,.3,1); }
-.columna--izq { transition: opacity .32s, filter .32s; }
-body.foco .cuerpo { grid-template-columns: 0px minmax(0,1fr) 336px; }
-body.foco .columna--izq { opacity: 0; filter: blur(7px); pointer-events: none; overflow: hidden; }
-body.foco #panel-historial { display: none; }
+/* Al encender, el dashboard entero desaparece: no queda ni un KPI de ruido. */
+#vista-res { display: none; }
+body.foco #vista-dash { display: none; }
+body.foco #vista-res { display: block; flex: 1; min-height: 0; overflow-y: auto; }
 
-.panel--res { border-color: rgba(251,146,60,.35); }
-.panel--res .head__izq svg, .panel--res .head__izq .label { color: var(--warn); }
+.res-wrap {
+  max-width: 1080px; margin: 0 auto; padding: 4px var(--gap) 32px;
+  display: flex; flex-direction: column; gap: 18px;
+  animation: entraRes .38s cubic-bezier(.25,.85,.3,1);
+}
+@keyframes entraRes { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }
 
-.res { display: flex; flex-direction: column; gap: 18px; padding-bottom: 8px; }
+.res-top { display: flex; align-items: center; gap: 14px; padding-top: 4px; }
+.res-top__t { font-size: 20px; font-weight: 800; letter-spacing: -.038em; }
+.res-top__s { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+
+.btn-volver {
+  display: inline-flex; align-items: center; gap: 8px; flex: none;
+  padding: 10px 16px 10px 12px; border-radius: var(--r); cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: -.012em;
+  background: var(--surface-2); border: 1px solid var(--borde); color: var(--ink);
+  box-shadow: var(--nm-suave); transition: background .18s, transform .12s;
+}
+.btn-volver:hover { background: #2b343c; }
+.btn-volver:active { box-shadow: var(--nm-hueco); transform: translateY(1px); }
+
+/* Selector de caso: ahora vive dentro de la vista, porque afuera no queda nada */
+.res-casos { display: flex; gap: 9px; flex-wrap: wrap; }
+.caso-chip {
+  display: flex; align-items: center; gap: 9px; padding: 9px 15px; border-radius: 100px;
+  cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 600;
+  background: var(--surface-2); border: 1px solid var(--borde); color: var(--ink-2);
+  box-shadow: var(--nm-suave); transition: color .18s, border-color .18s, background .18s;
+}
+.caso-chip:hover { color: var(--ink); border-color: var(--borde-alto); }
+.caso-chip--activo {
+  color: var(--warn); background: rgba(251,146,60,.1); border-color: var(--warn);
+  box-shadow: 0 0 0 2px rgba(251,146,60,.2), var(--nm-suave);
+}
+.caso-chip__p { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+.res-vacio {
+  text-align: center; padding: 70px 20px; color: var(--ink-3);
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+.res-vacio__i { width: 58px; height: 58px; border-radius: 18px; display: grid; place-items: center; background: var(--well); box-shadow: var(--nm-hueco); color: var(--ink-3); }
+.res-vacio__t { font-size: 16px; font-weight: 700; color: var(--ink-2); letter-spacing: -.025em; }
+.res-vacio__d { font-size: 12.5px; max-width: 46ch; line-height: 1.6; }
 
 .res-alerta {
   display: flex; gap: 14px; padding: 17px 19px; border-radius: var(--r-md);
@@ -542,11 +586,6 @@ body.foco #panel-historial { display: none; }
 .chip-v--si { color: var(--good); background: var(--good-dim); border-color: rgba(52,211,153,.32); }
 .chip-v--h  { color: var(--warn); background: var(--warn-dim); border-color: rgba(251,146,60,.32); }
 
-/* Selector de caso cuando hay más de una escalación */
-.esc--sel { cursor: pointer; transition: border-color .18s, background .18s; width: 100%; text-align: left; font-family: inherit; }
-.esc--sel:hover { background: rgba(251,146,60,.12); }
-.esc--activo { border-color: var(--warn); box-shadow: 0 0 0 2px rgba(251,146,60,.25), var(--nm-suave); }
-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
@@ -568,14 +607,17 @@ body.foco #panel-historial { display: none; }
         <div class="reloj__h mono" id="reloj-h">—</div>
         <div class="reloj__f" id="reloj-f">—</div>
       </div>
+      <div id="sw-slot"></div>
     </div>
   </header>
 
+  <div class="principal">
+  <div id="vista-dash">
   <div class="brief" id="brief"></div>
 
   <div class="cuerpo">
 
-    <div class="columna columna--izq">
+    <div class="columna">
       <section class="panel panel--crece">
         <div class="panel__head">
           <div class="head__izq"><span id="ico-mandatos"></span><span class="label">Mandatos</span></div>
@@ -592,7 +634,7 @@ body.foco #panel-historial { display: none; }
     </div>
 
     <div class="columna">
-      <section class="panel panel--crece" id="panel-commitments">
+      <section class="panel panel--crece">
         <div class="panel__head">
           <div class="head__izq"><span id="ico-commits"></span><span class="label">Commitments</span></div>
           <span class="label" id="commitments-resumen">—</span>
@@ -605,27 +647,17 @@ body.foco #panel-historial { display: none; }
           <div class="vacio" id="commitments-vacio">Todavía no se cerró ningún acuerdo.<br>Los commitments aparecen acá apenas Volta los negocia.</div>
         </div>
       </section>
-
-      <!-- Vista enfocada: el caso escalado, para que un humano lo negocie -->
-      <section class="panel panel--crece panel--res" id="panel-res" hidden>
-        <div class="panel__head">
-          <div class="head__izq"><span id="ico-res"></span><span class="label">Modo resolución</span></div>
-          <button class="btn btn--fantasma" id="salir-res">Volver al panel</button>
-        </div>
-        <div class="panel__body" id="res-body"></div>
-      </section>
     </div>
 
     <div class="columna">
       <section class="panel panel--esc" id="panel-esc" hidden>
         <div class="panel__head">
           <div class="head__izq"><span id="ico-alerta"></span><span class="label">Escalado a un humano</span></div>
-          <span class="cuenta" id="esc-total">0</span>
         </div>
         <div class="panel__body" id="escalaciones"></div>
       </section>
 
-      <section class="panel panel--crece" id="panel-historial">
+      <section class="panel panel--crece">
         <div class="panel__head">
           <div class="head__izq"><span id="ico-historial"></span><span class="label">Historial de llamadas</span></div>
           <span class="cuenta" id="historial-total">0</span>
@@ -638,6 +670,11 @@ body.foco #panel-historial { display: none; }
     </div>
 
   </div>
+  </div><!-- /vista-dash -->
+
+  <!-- Vista aislada: solo el caso escalado, sin nada del dashboard alrededor -->
+  <section id="vista-res"><div class="res-wrap" id="res-body"></div></section>
+  </div><!-- /principal -->
 </div>
 
 <dialog class="drawer" id="drawer">
@@ -652,7 +689,9 @@ body.foco #panel-historial { display: none; }
 </dialog>
 
 <dialog class="modal" id="form-mandato">
-  <form method="dialog" id="form">
+  <!-- novalidate: la validación la hacemos nosotros para poder dar mensajes
+       propios en vez de los burbujeos genéricos del navegador. -->
+  <form method="dialog" id="form" novalidate>
     <div class="form__head">
       <div class="form__t">Autorizar un mandato</div>
       <div class="form__a">Volta busca transportista y negocia dentro de estos límites. No puede comprometer nada fuera de acá.</div>
@@ -663,6 +702,7 @@ body.foco #panel-historial { display: none; }
         <div class="campo campo--w">
           <label class="label" for="f-dia">Día de retiro</label>
           <input id="f-dia" name="dia" type="date" required>
+          <span class="campo__e" id="e-dia" hidden></span>
         </div>
         <div class="campo">
           <label class="label" for="f-desde">Franja desde</label>
@@ -672,11 +712,14 @@ body.foco #panel-historial { display: none; }
           <label class="label" for="f-hasta">Franja hasta</label>
           <input id="f-hasta" name="hasta" type="time" value="12:00" required>
         </div>
+        <div class="campo campo--w" style="margin-top:-6px">
+          <span class="campo__e" id="e-hora" hidden></span>
+        </div>
         <div class="campo campo--w">
           <label class="label" for="f-tope">Precio máximo (MXN)</label>
           <input id="f-tope" name="tope" type="number" min="0" step="1" value="9000" class="mono" required>
           <span class="campo__n">Número entero, sin negativos. Volta no puede comprometer un peso por encima.</span>
-          <span class="campo__e" id="f-error" hidden></span>
+          <span class="campo__e" id="e-tope" hidden></span>
         </div>
       </div>
     </div>
@@ -801,6 +844,7 @@ const ICONOS = {
   reloj:   '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
   wallet:  '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>',
   chevron: '<path d="m9 18 6-6-6-6"/>',
+  flecha:  '<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>',
   arribaD: '<path d="M7 17 17 7"/><path d="M7 7h10v10"/>',
   abajoI:  '<path d="M17 7 7 17"/><path d="M17 17H7V7"/>',
   x:       '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
@@ -1058,29 +1102,30 @@ let modoResolucion = false;
 let casoActivo = null;      // id de la escalación que se está resolviendo
 
 function alternarResolucion(on) {
-  modoResolucion = on && estado.escalaciones.length > 0;
-  // Al entrar, se abre la escalación más reciente si no había una elegida.
+  modoResolucion = on;
+  // Al entrar se abre la escalación más reciente, salvo que ya hubiera una elegida.
   if (modoResolucion && !estado.escalaciones.some(e => e.id === casoActivo)) {
-    casoActivo = estado.escalaciones[estado.escalaciones.length - 1].id;
+    casoActivo = estado.escalaciones.at(-1)?.id ?? null;
   }
-  const teniaFoco = document.activeElement?.id === "sw-res";
   render();
-  if (teniaFoco) $("sw-res")?.focus();
 }
 
 function render() {
-  // Sin escalaciones no hay nada que resolver: el modo se apaga solo.
-  if (modoResolucion && estado.escalaciones.length === 0) modoResolucion = false;
   document.body.classList.toggle("foco", modoResolucion);
-  $("panel-commitments").hidden = modoResolucion;
-  $("panel-res").hidden = !modoResolucion;
+  const sw = $("sw-res");
+  if (sw && sw.checked !== modoResolucion) sw.checked = modoResolucion;
 
-  renderBrief();
-  renderMandatos();
-  renderCommitments();
-  renderEscalaciones();
-  renderHistorial();
-  if (modoResolucion) renderResolucion();
+  // En modo resolución el dashboard entero está oculto: no hay para qué
+  // reconstruirlo, y al volver se redibuja con el estado del momento.
+  if (modoResolucion) {
+    renderResolucion();
+  } else {
+    renderBrief();
+    renderMandatos();
+    renderCommitments();
+    renderEscalaciones();
+    renderHistorial();
+  }
   if (drawerRef) pintarDrawer();
 }
 
@@ -1113,7 +1158,7 @@ function renderBrief() {
     { v: conf.length, n: "Commitments confirmados", i: "check" },
     { v: moneda(acc), n: "Ahorro vs. tope", i: "trend", cls: "tile--good", spark: serie },
     { v: estado.escalaciones.length, n: "Escalados a humano", i: "alerta",
-      cls: estado.escalaciones.length ? "tile--warn" : "", sw: true },
+      cls: estado.escalaciones.length ? "tile--warn" : "" },
   ];
 
   $("brief").replaceChildren(...tiles.map(t => {
@@ -1126,25 +1171,23 @@ function renderBrief() {
     top.append(izq, caja);
     w.append(top, el("div", "tile__nota", t.n));
     if (t.spark) { const s = sparkline(t.spark); if (s) w.append(s); }
-    if (t.sw) w.append(switchResolucion());
     return w;
   }));
 }
 
-/* Interruptor del modo resolución, dentro del KPI de escalados. */
-function switchResolucion() {
+/* Interruptor del modo resolución — arriba a la derecha, en la cabecera.
+   Se construye una sola vez: vive fuera del render para no perder el foco
+   del teclado ni reiniciar la animación de la bola en cada actualización. */
+function montarSwitch() {
   const lab = el("label", "switch");
   const inp = document.createElement("input");
   inp.type = "checkbox";
   inp.id = "sw-res";
-  inp.checked = modoResolucion;
-  inp.disabled = estado.escalaciones.length === 0;
   inp.onchange = () => alternarResolucion(inp.checked);
-
   const pista = el("span", "switch__pista");
   pista.append(el("span", "switch__bola"));
   lab.append(inp, pista, el("span", "switch__txt", "Modo resolución"));
-  return lab;
+  $("sw-slot").append(lab);
 }
 
 /* -- Mandatos ------------------------------------------------------------- */
@@ -1316,17 +1359,9 @@ function renderEscalaciones() {
   const panel = $("panel-esc");
   panel.hidden = estado.escalaciones.length === 0;
   if (panel.hidden) return;
-  texto("esc-total", estado.escalaciones.length);
+  // El recuento vive solo en el KPI de arriba: acá era ruido duplicado.
   $("escalaciones").replaceChildren(...[...estado.escalaciones].reverse().map(e => {
-    // En modo resolución cada escalación pasa a ser el selector del caso.
-    const clases = "esc" + (esNuevo(e.id) ? " entra" : "")
-      + (modoResolucion ? " esc--sel" : "")
-      + (modoResolucion && e.id === casoActivo ? " esc--activo" : "");
-    const w = el(modoResolucion ? "button" : "div", clases);
-    if (modoResolucion) {
-      w.type = "button";
-      w.onclick = () => { casoActivo = e.id; render(); };
-    }
+    const w = el("div", "esc" + (esNuevo(e.id) ? " entra" : ""));
     const t = el("div", "esc__t");
     t.append(ico("alerta", 12), document.createTextNode(e.trigger));
     w.append(t, el("div", "esc__q", e.titulo), el("div", "esc__d", e.detalle),
@@ -1339,10 +1374,45 @@ function renderEscalaciones() {
    MODO RESOLUCIÓN — todo lo que un humano necesita para retomar la llamada
    ========================================================================== */
 function renderResolucion() {
-  const e = estado.escalaciones.find(x => x.id === casoActivo) ?? estado.escalaciones[estado.escalaciones.length - 1];
-  if (!e) return;
+  const cont = $("res-body");
+  const e = estado.escalaciones.find(x => x.id === casoActivo) ?? estado.escalaciones.at(-1);
+
+  /* 0 · Barra superior: volver + título. Siempre presente, aun sin casos. */
+  const top = el("div", "res-top");
+  const volver = el("button", "btn-volver");
+  volver.type = "button";
+  volver.append(ico("flecha", 16), document.createTextNode("Volver al dashboard"));
+  volver.onclick = () => alternarResolucion(false);
+  const tit = el("div");
+  tit.append(el("div", "res-top__t", "Modo resolución"),
+             el("div", "res-top__s", e ? "Un humano toma el caso desde acá" : "Nada pendiente de intervención"));
+  top.append(volver, tit);
+
+  if (!e) {
+    const v = el("div", "res-vacio");
+    const i = el("div", "res-vacio__i"); i.append(ico("check", 26));
+    v.append(i, el("div", "res-vacio__t", "No hay casos escalados"),
+      el("div", "res-vacio__d", "Volta está cerrando todo dentro de mandato. Cuando algo se salga de los límites o la contraparte pida un humano, el caso aparece acá."));
+    cont.replaceChildren(top, v);
+    return;
+  }
+
   const m = estado.mandatos.find(x => x.id === e.mandato_id);
   const out = el("div", "res");
+  out.style.cssText = "display:flex;flex-direction:column;gap:18px";
+
+  /* Selector de caso: el panel lateral ya no está, así que va acá */
+  if (estado.escalaciones.length > 1) {
+    const casos = el("div", "res-casos");
+    estado.escalaciones.forEach(x => {
+      const c = el("button", "caso-chip" + (x.id === casoActivo ? " caso-chip--activo" : ""));
+      c.type = "button";
+      c.onclick = () => { casoActivo = x.id; render(); };
+      c.append(el("span", "caso-chip__p"), document.createTextNode(`${x.mandato_id} · ${x.trigger}`));
+      casos.append(c);
+    });
+    out.append(casos);
+  }
 
   /* 1 · Encabezado de alerta: por qué llegó esto a un humano */
   const alerta = el("div", "res-alerta");
@@ -1423,7 +1493,7 @@ function renderResolucion() {
     out.append(caja);
   }
 
-  $("res-body").replaceChildren(out);
+  cont.replaceChildren(top, out);
 }
 
 function eventoLlamada(l, m) {
@@ -1675,28 +1745,77 @@ function detalleLlamada(l) {
    FORMULARIO
    ========================================================================== */
 const dlg = $("form-mandato");
+
+/** Hoy a medianoche local — el piso de fechas permitido. */
+function hoyLocal() {
+  const h = new Date();
+  return new Date(h.getFullYear(), h.getMonth(), h.getDate());
+}
+const isoHoy = () => {
+  const h = hoyLocal();
+  return `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,"0")}-${String(h.getDate()).padStart(2,"0")}`;
+};
+
+const CAMPOS_ERR = { dia: ["e-dia", "f-dia"], hora: ["e-hora", "f-desde"], tope: ["e-tope", "f-tope"] };
+
+function limpiarErrores() {
+  Object.values(CAMPOS_ERR).forEach(([eId, iId]) => {
+    $(eId).hidden = true;
+    $(iId).classList.remove("mal");
+  });
+  $("f-hasta").classList.remove("mal");
+}
+
+function marcarError(campo, mensaje) {
+  const [eId, iId] = CAMPOS_ERR[campo];
+  const e = $(eId);
+  e.replaceChildren(ico("alerta", 12), document.createTextNode(mensaje));
+  e.hidden = false;
+  $(iId).classList.add("mal");
+  if (campo === "hora") $("f-hasta").classList.add("mal");
+  $(iId).focus();
+}
+
 $("abrir-form").onclick = () => {
-  if (!$("f-dia").value) $("f-dia").value = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
-  $("f-error").hidden = true;
+  const f = $("f-dia");
+  // El picker ya no deja elegir días pasados; la validación de abajo cubre
+  // el caso de que el usuario escriba la fecha a mano.
+  f.min = isoHoy();
+  if (!f.value || f.value < f.min) f.value = isoHoy();
+  limpiarErrores();
   dlg.showModal();
 };
 $("cancelar").onclick = () => dlg.close();
 
 $("form").addEventListener("submit", e => {
   const d = Object.fromEntries(new FormData(e.target));
-  const err = $("f-error");
-  const tope = Number(d.tope);
-  if (!Number.isInteger(tope) || tope < 0) {
+  limpiarErrores();
+
+  if (!d.dia) { e.preventDefault(); marcarError("dia", "Elegí un día de retiro."); return; }
+
+  // Comparación por componentes: parsear "YYYY-MM-DD" con new Date() lo trata
+  // como UTC y en zonas negativas como MX puede correrse un día.
+  const [a, mm, dd] = d.dia.split("-").map(Number);
+  if (new Date(a, mm - 1, dd) < hoyLocal()) {
     e.preventDefault();
-    err.textContent = "El precio máximo tiene que ser un número entero y no negativo.";
-    err.hidden = false; return;
+    marcarError("dia", "Fecha no válida: no es posible ingresar fechas pasadas. Por favor, selecciona una fecha actual o futura.");
+    return;
   }
+
+  if (!d.desde || !d.hasta) { e.preventDefault(); marcarError("hora", "Completá la franja horaria."); return; }
   if (d.hasta <= d.desde) {
     e.preventDefault();
-    err.textContent = "La franja termina antes de empezar. Revisá los horarios.";
-    err.hidden = false; return;
+    marcarError("hora", "La franja termina antes de empezar. Revisá los horarios.");
+    return;
   }
-  err.hidden = true;
+
+  const tope = Number(d.tope);
+  if (d.tope === "" || !Number.isInteger(tope) || tope < 0) {
+    e.preventDefault();
+    marcarError("tope", "El precio máximo tiene que ser un número entero y no negativo.");
+    return;
+  }
+
   crearMandato({ dia: d.dia, desde: d.desde, hasta: d.hasta, tope });
   render();
 });
@@ -1712,8 +1831,7 @@ $("ico-alerta").append(ico("alerta", 14));
 $("ico-historial").append(ico("hist", 14));
 $("ico-mas").append(ico("mas", 15));
 $("ico-x").append(ico("x", 16));
-$("ico-res").append(ico("alerta", 14));
-$("salir-res").onclick = () => alternarResolucion(false);
+montarSwitch();
 texto("ruta-texto", `${RUTA.origen} → ${RUTA.destino}`);
 texto("ruta-form", `${RUTA.origen} → ${RUTA.destino}`);
 renderCabecera();
