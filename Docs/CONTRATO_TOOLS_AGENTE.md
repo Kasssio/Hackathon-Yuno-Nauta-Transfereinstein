@@ -275,6 +275,129 @@ con `GET /transportistas?puerto=Manzanillo&limite=3`: entran
 de cercanía, flexibilidad para negociar y probabilidad de aceptar
 el trabajo.
 
+## 5. Llamada entrante simulada, transportista específico, y cuándo cortar
+
+El botón de `voice/public/index.html` dice "Atender llamada", no "Conectar"
+— la idea es que Volta ya tiene un mandato y nos está llamando a nosotros
+para arrancar la negociación (WebRTC no tiene un "quién marcó a quién"
+real, así que técnicamente sigue siendo el mismo `connect()` de siempre).
+
+Al abrir el canal de datos (`dc.open`), `client.js` dispara sola
+`saludarInicial()`. **Ojo con un detalle importante de la Realtime API:**
+`response.create` con un `instructions` propio no se SUMA al prompt de
+sesión (el fat prompt de Sofía) — lo REEMPLAZA para esa respuesta puntual.
+La primera versión de esta función le pasaba ahí mismo el saludo
+completo con nombre del transportista y datos de la carga, y el
+resultado fue el bug que encontró Lucas: esa respuesta usaba solo el
+texto corto inyectado, no las ~660 líneas de reglas de Sofía — Volta
+"se olvidaba" de su propio prompt (evaluación de mandato, máquina de
+estados, etc.) justo en el turno más importante, el de apertura.
+
+La solución: `saludarInicial()` ya no le hace decir nada a Volta en esa
+primera respuesta. Solo le pide, vía `response.instructions`, que llame
+en orden a tres tools nuevas/existentes — `get_operacion_actual`,
+`find_carriers` (sin forzarle un `limite` — la propia tool ya recomienda
+`limite: 3` en su description, y forzar `1` ahí generaba un conflicto
+que el modelo resolvía a favor de la tool; en cambio se le pide que
+trate al primero de la lista como el transportista de esta llamada) y
+`check_mandato` — sin hablar todavía.
+
+**Bug real que apareció al probarlo en vivo:** cuando una misma respuesta
+trae más de un `function_call` (ej. `check_mandato` y `find_carriers`
+juntos), el loop de `handleEvent` que despacha los resultados mandaba un
+`response.create` por cada tool call — y la Realtime API solo permite una
+respuesta activa a la vez, así que el segundo `response.create` volvía
+con el error `conversation_already_has_active_response`. Se arregló
+sacando el `response.create` de adentro del loop: ahora se despachan
+todos los `conversation.item.create` primero, y recién después se pide
+UNA sola respuesta siguiente.
+Cuando esos resultados vuelven, el código existente de manejo de tool
+calls (`handleEvent`, más abajo en `client.js`) ya dispara un
+`response.create` **sin ningún `instructions` override** para la
+respuesta siguiente — y esa sí sale con el fat prompt entero disponible,
+así que Volta abre con su apertura estándar del prompt de Sofía
+("Hola [nombre], habla Volta..."), dirigida al transportista real que
+`find_carriers` le devolvió, con los datos reales de `get_operacion_actual`.
+La regla de no mencionar `disposicion_a_negociar`, `puntualidad` ni las
+tasas de aceptación en voz alta ahora vive directamente en
+`session-config.ts` (prompt permanente), no en texto inyectado por turno
+— así aplica en toda la llamada, no solo en la apertura.
+
+```ts
+{
+  type: "function",
+  name: "get_operacion_actual",
+  description: "Devuelve los datos del transporte que estás gestionando en esta llamada: cliente, contenedor, puerto de origen, destino y ETA. Llamala apenas arranca la llamada, antes de find_carriers y check_mandato, para saber de qué transporte se trata.",
+  parameters: { type: "object", properties: {}, required: [] },
+},
+```
+
+```js
+if (name === "get_operacion_actual") {
+  try {
+    const { operacion } = await resolverOperacionActual();
+    return {
+      cliente: operacion.cliente,
+      contenedor_id: operacion.contenedor_id,
+      puerto_origen: operacion.puerto_origen,
+      destino: operacion.destino,
+      eta: operacion.eta,
+    };
+  } catch (e) {
+    return { error: "no hay ninguna operación cargada todavía" };
+  }
+}
+```
+
+Si quien atiende no es ese transportista (número equivocado, otra
+empresa), la regla está en `session-config.ts` (buscá "Confirmá la
+identidad al principio de la llamada"): Volta tiene que cortar, no seguir
+negociando con quien no le sirve. Para eso existe la tool `end_call`
+(nueva — no confundir con `escalate_to_human`, que transfiere a un humano
+sin cortar; `end_call` corta la llamada porque no tiene sentido seguirla):
+
+```ts
+{
+  type: "function",
+  name: "end_call",
+  description:
+    "Termina la llamada porque no sirve a tu objetivo — te confirmaron que es un número " +
+    "equivocado, que no son el transportista que buscabas, que no manejan este tipo de " +
+    "transporte, o ya no queda nada más que resolver. Usala en vez de seguir una " +
+    "conversación que no va a ningún lado. No la uses para transferir a un humano — para " +
+    "eso está escalate_to_human.",
+  parameters: {
+    type: "object",
+    properties: {
+      motivo: {
+        type: "string",
+        description: "Por qué cortás, en una frase corta, ej. 'número equivocado, no es Transportes Colima'.",
+      },
+    },
+    required: ["motivo"],
+  },
+},
+```
+
+En `client.js`, el patrón es el mismo que ya existía para
+`escalate_to_human`: la tool no corta nada por sí sola. Devuelve una
+`instruccion` para que Volta diga UNA frase de cierre, y recién cuando esa
+frase termina de generarse (`response.done` sin más tool calls) el cliente
+espera ~2.5s (para que el audio termine de sonar) y ahí sí llama a
+`hangup()` de verdad.
+
+```js
+if (name === "end_call") {
+  motivoFinLlamada = args.motivo || "";
+  esperandoFraseDeCierre = true;
+  return {
+    ok: true,
+    instruccion:
+      "Decile a la contraparte, en UNA sola frase breve y cordial, que listo, gracias, y que cortás. Nada más — no reabras el tema.",
+  };
+}
+```
+
 ## Notas
 
 - Si `seed_demo.py` no se corrió todavía, `check_mandato`/`record_commitment` van a fallar con "no hay ninguna operación creada" — correr `python backend/scripts/seed_demo.py` antes de probar la voz contra el backend real.

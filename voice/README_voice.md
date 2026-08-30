@@ -31,9 +31,16 @@ Después:
 npm run dev
 ```
 
-Abrí `http://localhost:3000` en Chrome, apretá F12 (consola), Conectar,
-permitir micrófono, y hablá. En consola vas a ver la transcripción de
-ambos lados y `[latency] turno N: XXXms`.
+Antes de conectar, corré `python backend/scripts/seed_demo.py` (con el
+backend levantado) para que exista una operación — si no, la llamada
+arranca igual pero sin el saludo con contexto real.
+
+Abrí `http://localhost:3000` en Chrome, apretá F12 (consola), "Atender
+llamada", permitir micrófono. **No hables primero**: la llamada está
+armada como si Volta nos estuviera llamando a nosotros — habla ella
+apenas se conecta, preguntando disponibilidad. Respondé desde ahí y
+arranca la negociación. En consola vas a ver la transcripción de ambos
+lados y `[latency] turno N: XXXms`.
 
 ## Si algo falla en Windows
 
@@ -49,9 +56,14 @@ ambos lados y `[latency] turno N: XXXms`.
 
 Los dos están en `public/client.js`, marcados con comentario:
 
-- **`onToolCall(name, args)`** — acá va el guardrail y `record_commitment`
-  contra el backend. Hoy sólo tiene `get_time()` de prueba. Las tools se
+- **`onToolCall(name, args)`** — ya tiene las 7 tools contra el backend:
+  `find_carriers`, `check_mandato`, `request_quote`, `cancel_commitment`,
+  `record_commitment`, `escalate_to_human` y `get_time`. Las tools se
   declaran en `session-config.ts`.
+- **`saludarInicial()`** — se dispara sola cuando el canal de datos abre
+  (evento `dc.open`), para que Volta hable primero como si nos estuviera
+  llamando ella. Si necesitás volver al modo "hablo yo primero", basta con
+  no llamarla ahí.
 - **`onTranscript(role, text)`** — vacía, para engancharla al dashboard.
 
 `session-config.ts` (instructions, voice, tools) está pensado para

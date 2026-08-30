@@ -6,6 +6,8 @@ let analyser, analyserData, latencyRAF = null;
 let escalado = false;
 let esperandoFraseDeTraspaso = false;
 let motivoEscalacion = "";
+let esperandoFraseDeCierre = false;
+let motivoFinLlamada = "";
 
 const statusEl = () => document.getElementById("status");
 const setStatus = (s) => (statusEl().textContent = s);
@@ -36,6 +38,24 @@ export async function onToolCall(name, args) {
   console.log("[tool]", name, args);
 
   if (name === "get_time") return { time: new Date().toISOString() };
+
+  if (name === "get_operacion_actual") {
+    try {
+      const { operacion } = await resolverOperacionActual();
+      return {
+        cliente: operacion.cliente,
+        contenedor_id: operacion.contenedor_id,
+        puerto_origen: operacion.puerto_origen,
+        destino: operacion.destino,
+        eta: operacion.eta,
+      };
+    } catch (e) {
+      // Sin operación seedeada (seed_demo.py no corrió) no hay nada que
+      // devolver — que Volta lo sepa y reaccione, en vez de que se rompa
+      // la llamada entera por una excepción sin capturar.
+      return { error: "no hay ninguna operación cargada todavía" };
+    }
+  }
 
   if (name === "find_carriers") {
     const { operacion } = await resolverOperacionActual();
@@ -123,7 +143,59 @@ export async function onToolCall(name, args) {
     };
   }
 
+  if (name === "end_call") {
+    motivoFinLlamada = args.motivo || "";
+    esperandoFraseDeCierre = true;
+    console.log("[end_call]", motivoFinLlamada);
+    return {
+      ok: true,
+      instruccion:
+        "Decile a la contraparte, en UNA sola frase breve y cordial, que listo, gracias, y que cortás. Nada más — no reabras el tema.",
+    };
+  }
+
   return { error: `tool desconocida: ${name}` };
+}
+
+// Simulamos una llamada ENTRANTE: Volta ya tiene un mandato y nos llama
+// para arrancar la negociación — el botón dice "Atender llamada", no
+// "Conectar". En WebRTC no existe un "quién marcó a quién" real (la
+// telefonía está 100% mockeada, per Docs/DECISIONS.md), así que lo que
+// hacemos es forzar a que Volta hable primero apenas el canal de datos
+// abre, en vez de esperar a que hablemos nosotros.
+//
+// OJO con esto: `response.create` con un `instructions` propio NO se
+// SUMA al prompt de sesión (el fat prompt de Sofía) — lo REEMPLAZA para
+// esa respuesta puntual. La primera versión de esta función le pasaba
+// ahí mismo el saludo completo, y el resultado era exactamente el bug
+// que encontró Lucas: esa respuesta usaba solo mi texto corto, no las
+// ~660 líneas de reglas de Sofía (evaluación de mandato, máquina de
+// estados, etc.) — Volta "olvidaba" su propio prompt en ese turno.
+//
+// La solución es no usar `instructions` para el saludo en sí. En vez de
+// eso, esta primera respuesta NO habla — solo le pide a Volta que llame
+// a sus propias tools (get_operacion_actual, find_carriers, check_mandato)
+// para levantar el contexto real. Recién la respuesta SIGUIENTE (la que
+// sale después de esos resultados, ver el loop de tool calls más abajo en
+// handleEvent) es la que efectivamente saluda — y esa sí se genera con
+// `response.create` sin ningún override, o sea con el fat prompt entero
+// disponible, tal como cualquier otra respuesta de la llamada.
+function saludarInicial() {
+  dc.send(JSON.stringify({
+    type: "response.create",
+    response: {
+      instructions:
+        "La llamada recién se conectó — todavía no habló nadie, ni vos ni la contraparte. " +
+        "Antes de decir una sola palabra, llamá en orden a get_operacion_actual, después a " +
+        "find_carriers, y después a check_mandato. No hables todavía: esta respuesta es solo " +
+        "para levantar ese contexto. find_carriers te va a devolver varios candidatos — para " +
+        "ESTA llamada en particular, tratá al primero de la lista (el mejor puntaje) como el " +
+        "transportista específico que estás llamando ahora mismo. Con esos resultados vas a " +
+        "tener de qué transporte se trata, a quién estás llamando, y tu mandato vigente — " +
+        "recién en tu próximo turno abrí la llamada con tu saludo estándar, dirigido a ese " +
+        "transportista por nombre.",
+    },
+  }));
 }
 
 function armLatencyProbe() {
@@ -202,7 +274,7 @@ function volverAVolta() {
         "Si no se acordó nada concreto, decilo en una frase corta y no registres nada.",
     },
   }));
-  setStatus("conectado");
+  setStatus("en llamada");
   btn("escalar").disabled = false;
   btn("devolver").disabled = true;
   console.log("[escalacion] fin, vuelve Volta");
@@ -246,6 +318,13 @@ async function handleEvent(ev) {
       return;
     }
 
+    // Un mismo response.output puede traer VARIOS function_call (ej. Volta
+    // pidiendo check_mandato y find_carriers juntos) — hay que despachar
+    // los resultados de todos antes de pedir la respuesta siguiente. Antes
+    // esto mandaba un response.create POR CADA tool call dentro del mismo
+    // loop, y la Realtime API solo permite una respuesta activa a la vez:
+    // el segundo response.create llegaba mientras el primero todavía
+    // estaba en curso y volvía el error "conversation_already_has_active_response".
     let huboToolCall = false;
     for (const item of ev.response.output ?? []) {
       if (item.type !== "function_call") continue;
@@ -255,6 +334,8 @@ async function handleEvent(ev) {
         type: "conversation.item.create",
         item: { type: "function_call_output", call_id: item.call_id, output: JSON.stringify(result) },
       }));
+    }
+    if (huboToolCall) {
       dc.send(JSON.stringify({ type: "response.create" }));
     }
 
@@ -262,13 +343,23 @@ async function handleEvent(ev) {
       esperandoFraseDeTraspaso = false;
       entrarEnEscalacion();
     }
+
+    if (esperandoFraseDeCierre && !huboToolCall) {
+      esperandoFraseDeCierre = false;
+      setStatus("cortando — la llamada no servía (" + motivoFinLlamada + ")");
+      // Le damos un momento a la frase de cierre para que termine de
+      // reproducirse antes de cortar de verdad — no hay (todavía) un
+      // evento del lado del cliente que avise "el audio ya terminó de
+      // sonar", así que esto es un heurístico corto, no una garantía.
+      setTimeout(() => hangup(), 2500);
+    }
   }
 
   if (ev.type === "error") console.error("[realtime error]", ev.error);
 }
 
 async function connect() {
-  setStatus("conectando...");
+  setStatus("atendiendo...");
   try {
     const key = (await (await fetch("/session", { method: "POST" })).json()).value;
 
@@ -290,6 +381,11 @@ async function connect() {
 
     dc = pc.createDataChannel("oai-events");
     dc.addEventListener("message", (e) => handleEvent(JSON.parse(e.data)));
+    dc.addEventListener("open", () => {
+      setStatus("en llamada");
+      btn("escalar").disabled = false;
+      saludarInicial();
+    });
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -301,8 +397,9 @@ async function connect() {
     }).then((r) => r.text());
 
     await pc.setRemoteDescription({ type: "answer", sdp });
-    setStatus("conectado");
-    btn("escalar").disabled = false;
+    // el estado pasa a "en llamada" y se dispara el saludo cuando el canal
+    // de datos abre de verdad (evento "open" de arriba), no acá — todavía
+    // puede faltar un instante de negociación ICE/DTLS en este punto.
   } catch (e) {
     console.error(e);
     setStatus("error: " + e.message);
@@ -317,7 +414,7 @@ function hangup() {
   pc = dc = analyser = null;
   escalado = false;
   esperandoFraseDeTraspaso = false;
-  setStatus("desconectado");
+  setStatus("sonando — Volta te está llamando");
   btn("escalar").disabled = true;
   btn("devolver").disabled = true;
 }
