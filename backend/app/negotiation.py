@@ -48,6 +48,13 @@ from .models import (
 # cerca del objetivo del ejemplo sin hardcodear ese número.
 DEFAULT_OBJETIVO_RATIO = 0.94
 
+# Cuánto por debajo tantea Volta cuando el conductor abre con una oferta que
+# ya sería aceptable, y hasta dónde puede bajar ese sondeo (fracción del
+# objetivo). Sondear de más suena a regateo de feria; no sondear deja plata
+# sobre la mesa y da un escenario poco realista.
+SONDEO_INICIAL = 0.08
+PISO_SONDEO = 0.88
+
 # Escalera de concesión: en qué fracción del camino entre objetivo y máximo
 # está Volta autorizado a ofrecer en cada ronda de esa estrategia. Ronda 1
 # siempre es 0.0 (el objetivo); el último valor siempre es 1.0 (el máximo,
@@ -345,7 +352,30 @@ def evaluar_oferta(
     paso_ya_dado = _paso_actual(estado, estrategia)
     escalon_final = len(ESCALERA_CONCESION[estrategia]) - 1
 
-    if es_oferta_aceptable:
+    # Una oferta buena en la PRIMERA ronda no se acepta de una: un
+    # coordinador real siempre tantea una vez antes de cerrar. Sin esto,
+    # el conductor tiraba el tope y Volta cerraba ahí mismo — un escenario
+    # poco realista y plata dejada en la mesa. Se sondea una sola vez: si
+    # el conductor no baja, en la ronda siguiente ya hay concesión (o la
+    # falta de ella) y se cierra.
+    sondear_antes_de_cerrar = (
+        es_oferta_aceptable
+        and paso_ya_dado == 0
+        and estado.ultima_oferta_volta is None
+        and monto_conductor is not None
+    )
+
+    if sondear_antes_de_cerrar:
+        es_oferta_aceptable = False
+        # Un escalón por debajo de lo que pidió, sin bajar del piso de la
+        # escalera: es un sondeo, no un regateo agresivo.
+        proximo_monto = _redondear_a_multiplo_de_10(
+            max(monto_conductor * (1 - SONDEO_INICIAL), objetivo * PISO_SONDEO), maximo
+        )
+        proximo_monto = min(proximo_monto, monto_conductor)
+        paso_a_usar = paso_ya_dado
+        ultimo_paso = False
+    elif es_oferta_aceptable:
         # Mejor que (o igual a) el propio objetivo — se acepta tal cual la
         # ofreció, no hace falta seguir exprimiendo un buen trato.
         proximo_monto = monto_conductor

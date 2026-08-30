@@ -344,10 +344,25 @@ def test_aceptacion_ambigua_pide_aclaracion_y_no_finaliza():
 # 10. Contraofertas
 # ---------------------------------------------------------------------------
 
-def test_contraoferta_dentro_del_objetivo_se_acepta_directo():
+def test_primera_oferta_buena_se_sondea_antes_de_cerrar():
+    """Aunque la oferta ya sea mejor que el objetivo, en la PRIMERA ronda
+    Volta tantea una vez por debajo en vez de cerrar de una: un coordinador
+    real no acepta el primer numero, y cerrar ahi deja plata en la mesa."""
     mandato = _mandato(tope_precio=9000.0, tarifa_objetivo=8500.0)
     estado = _estado(mandato)
     oferta = _oferta(monto=8200.0)  # mejor que el objetivo
+    decision = evaluar_oferta(estado, mandato, oferta, _contexto())
+    assert decision.intencion != IntencionNegociacion.accept_and_confirm
+    assert decision.finalizar is False
+    assert decision.monto_a_comunicar < 8200.0
+
+
+def test_segunda_ronda_con_oferta_buena_se_acepta():
+    """Ya sondeado (hay una oferta previa de Volta), una oferta dentro del
+    objetivo se cierra: el sondeo es una sola vez, no un regateo infinito."""
+    mandato = _mandato(tope_precio=9000.0, tarifa_objetivo=8500.0)
+    estado = _estado(mandato, ultima_oferta_volta=8300.0)
+    oferta = _oferta(monto=8200.0)
     decision = evaluar_oferta(estado, mandato, oferta, _contexto())
     assert decision.intencion == IntencionNegociacion.accept_and_confirm
     assert decision.monto_a_comunicar == 8200.0
@@ -574,8 +589,9 @@ def test_aceptar_la_oferta_del_conductor_no_se_redondea():
     número nuevo), se confirma el monto real acordado tal cual — redondear
     acá cambiaría lo que efectivamente se negoció."""
     mandato = _mandato(tope_precio=9000.0, tarifa_objetivo=8500.0)
-    estado = _estado(mandato)
-    oferta = _oferta(monto=8237.0)  # mejor que el objetivo, no es múltiplo de 100
+    # con una oferta previa de Volta ya se paso el sondeo inicial
+    estado = _estado(mandato, ultima_oferta_volta=8300.0)
+    oferta = _oferta(monto=8237.0)  # mejor que el objetivo, no es múltiplo de 10
     decision = evaluar_oferta(estado, mandato, oferta, _contexto())
     assert decision.intencion == IntencionNegociacion.accept_and_confirm
     assert decision.monto_a_comunicar == 8237.0

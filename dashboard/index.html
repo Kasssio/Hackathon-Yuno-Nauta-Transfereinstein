@@ -2301,6 +2301,204 @@ setInterval(() => {
   if (sucio) { render(); sucio = false; }
   tick();
 }, 1000);
+
+/* ==========================================================================
+   IDIOMA — toggle ES / EN para el jurado
+   --------------------------------------------------------------------------
+   Traductor de superficie: no toca ninguna cadena del código, se engancha
+   después de render() y reemplaza el texto ya pintado. Lo que no esté en el
+   diccionario queda en español, así que agregar features no lo rompe.
+   ========================================================================== */
+(function idioma() {
+  const DIC = {
+    "Volta — Centro de Operaciones": "Volta — Operations Center",
+    "Centro de operaciones · Textiles Pacífico": "Operations center · Textiles Pacífico",
+    "Mandatos": "Mandates",
+    "Nuevo mandato": "New mandate",
+    "Sin mandatos cargados.": "No mandates yet.",
+    "Cargá el primero para que Volta empiece a llamar.": "Create the first one so Volta starts calling.",
+    "Todavía no se cerró ningún acuerdo.": "No agreement closed yet.",
+    "Los commitments aparecen acá apenas Volta los negocia.": "Commitments show up here as soon as Volta negotiates them.",
+    "Escalado a un humano": "Escalated to a human",
+    "Historial de llamadas": "Call history",
+    "Sin llamadas cerradas todavía.": "No completed calls yet.",
+    "Autorizar un mandato": "Authorize a mandate",
+    "Volta busca transportista y negocia dentro de estos límites. No puede comprometer nada fuera de acá.":
+      "Volta finds a carrier and negotiates within these limits. It cannot commit to anything outside them.",
+    "Ruta fija:": "Fixed route:",
+    "Día de retiro": "Pickup day",
+    "Franja desde": "Window from",
+    "Franja hasta": "Window to",
+    "Precio máximo (USD)": "Maximum price (USD)",
+    "Número entero mayor a cero. Volta no puede comprometer un dólar por encima.":
+      "Whole number greater than zero. Volta cannot commit a dollar above it.",
+    "Cancelar": "Cancel",
+    "Autorizar y empezar a llamar": "Authorize and start calling",
+    "Modo resolución": "Resolution mode",
+    "Día": "Day",
+    "Eligiendo a quién llamar…": "Choosing who to call…",
+    "Llamada telefónica real…": "Live phone call…",
+    "Marcando (teléfono)": "Dialing (phone)",
+    "Marcando…": "Dialing…",
+    "Sonando": "Ringing",
+    "Atendió": "Answered",
+    "Cotizó": "Quoted",
+    "Ofertó": "Offered",
+    "Cotización en firme": "Firm quote",
+    "Cerró sin acuerdo": "Closed without agreement",
+    "Sin acuerdo — requiere revisión humana": "No agreement — needs human review",
+    "Un humano toma el caso desde acá": "A human takes over from here",
+    "Nada pendiente de intervención": "Nothing pending intervention",
+    "Reputación": "Reputation",
+    "Teléfono": "Phone",
+    "Cómo fue la llamada": "How the call went",
+    "Transcripción": "Transcript",
+    "Evaluación del guardrail": "Guardrail evaluation",
+    "Resumen de negociación con Volta (IA)": "Negotiation summary with Volta (AI)",
+    "Volta derivó la llamada al superar el margen de negociación automatizado.":
+      "Volta handed off the call after exceeding its automated negotiation margin.",
+    "La contraparte pidió hablar con un humano": "The counterpart asked to speak with a human",
+    "Micrófono silenciado": "Microphone muted",
+    "Activar micrófono": "Unmute microphone",
+    "Silenciar micrófono": "Mute microphone",
+    "Elegí un día de retiro.": "Pick a pickup day.",
+    "Completá la franja horaria.": "Fill in the time window.",
+    "La franja termina antes de empezar. Revisá los horarios.": "The window ends before it starts. Check the times.",
+    "Ingresá el precio máximo que Volta puede comprometer.": "Enter the maximum price Volta can commit to.",
+    "El precio máximo tiene que ser un número entero mayor a cero.": "The maximum price must be a whole number greater than zero.",
+    "Hoy ya no queda franja disponible. Elegí una fecha futura.": "No window left today. Pick a future date.",
+    "Para el día de hoy, la franja horaria debe ser posterior a la hora actual.":
+      "For today, the time window must be later than the current time.",
+    "Volta escaló la llamada": "Volta escalated the call",
+    "Motivo:": "Reason:",
+    "Preparando resumen…": "Preparing summary…",
+    "Atender y hablar con el transportista": "Answer and talk to the carrier",
+    "Terminé — que Volta cierre el commitment": "Done — let Volta close the commitment",
+    "Llamando al operador…": "Calling the operator…",
+    "En la llamada — atendé el teléfono": "On the call — pick up the phone",
+    "No se pudo conectar al server de voz": "Could not reach the voice server",
+    "No se pudo establecer la llamada": "Could not place the call",
+    "Monto dentro del tope": "Amount within the cap",
+    "Retiro dentro de la franja": "Pickup inside the window",
+    "Acepta la contraoferta": "Accepts the counteroffer",
+    "No baja del piso": "Won't go below its floor",
+    "Reservado con": "Booked with",
+    "No hay casos escalados": "No escalated cases",
+    "Mandato que lo autoriza": "Authorizing mandate",
+    "Motivo del rechazo": "Rejection reason",
+    "Ver la llamada que lo produjo": "See the call that produced it",
+    "sin acuerdo": "no agreement",
+    "Sin acuerdo": "No agreement",
+    "Aprobado": "Approved",
+    "Rechazado": "Rejected",
+    "Pendiente": "Pending",
+    "Escalado": "Escalated",
+    "Cerrado": "Closed",
+    "Llamando": "Calling",
+    "Evaluando": "Evaluating",
+    "Negociando": "Negotiating",
+    "Textiles Pacifico": "Textiles Pacifico",
+    "Déjeme ver la disponibilidad… sí, tengo unidad para esa franja.":
+      "Let me check availability… yes, I have a truck for that window.",
+    "Entonces pasame con alguien que pueda decidir, con vos no llegamos.":
+      "Then put me through to someone who can decide — we're not getting anywhere.",
+    "No puedo aprobar ese monto. Lo derivo a un responsable de la operación.":
+      "I can't approve that amount. I'm escalating it to whoever owns the operation.",
+  };
+
+  // Textos con datos adentro: se traduce solo la parte fija.
+  const PATRONES = [
+    [/^(\d+) de (\d+) cotizaron$/, "$1 of $2 quoted"],
+    [/^(\d+) de (\d+) confirmados$/, "$1 of $2 confirmed"],
+    [/^(\d+) en vivo$/, "$1 live"],
+    [/^(.+) transportistas en la base$/, "$1 carriers in the database"],
+    [/^Rechazado por el guardrail: (.+)$/, "Rejected by the guardrail: $1"],
+    [/^Ningún transportista bajó del tope de (.+)$/, "No carrier went below the cap of $1"],
+    [/^(.+) pidió hablar con un supervisor$/, "$1 asked to speak with a supervisor"],
+    [/^(.+) bajo el tope$/, "$1 under the cap"],
+    [/^(.+) sobre el tope$/, "$1 over the cap"],
+    [/^(.+) por debajo del tope autorizado$/, "$1 below the authorized cap"],
+    [/^(.+) por encima del tope autorizado$/, "$1 above the authorized cap"],
+    [/^Acordado (.+) — retiro (.+)$/, "Agreed $1 — pickup $2"],
+    [/^Cotizó (.+)$/, "Quoted $1"],
+    [/^Resumen generado por Volta al cerrar la negociación · (.+)$/,
+      "Summary generated by Volta at the end of the negotiation · $1"],
+    [/^(.+) contra un tope de (.+)$/, "$1 against a cap of $2"],
+    [/^(domingo|lunes|martes|miércoles|jueves|viernes|sábado) (\d+) de (\w+)$/,
+      function (_m, d, n, mes) { return DIAS_EN[d] + " " + n + " " + MESES_EN[mes]; }],
+    [/^Por esa ruta le queda en (.+)\.$/, "For that route it comes to $1."],
+    [/^Tengo autorizado hasta (.+)\. ¿Lo podemos ajustar\?$/, "I'm authorized up to $1. Can we adjust it?"],
+    [/^Mire… se lo dejo en (.+) y cerramos\.$/, "Look… I'll leave it at $1 and we close."],
+    [/^No puedo bajar de (.+), es mi costo\.$/, "I can't go below $1, that's my cost."],
+    [/^Reservado con (.+)$/, "Booked with $1"],
+  ];
+
+  const DIAS_EN = { domingo: "Sunday", lunes: "Monday", martes: "Tuesday",
+    "miércoles": "Wednesday", jueves: "Thursday", viernes: "Friday", "sábado": "Saturday" };
+  const MESES_EN = { enero: "January", febrero: "February", marzo: "March", abril: "April",
+    mayo: "May", junio: "June", julio: "July", agosto: "August", septiembre: "September",
+    octubre: "October", noviembre: "November", diciembre: "December" };
+
+  const traducirTexto = (t) => {
+    const s = t.trim();
+    if (!s) return null;
+    if (DIC[s]) return t.replace(s, DIC[s]);
+    for (const par of PATRONES) if (par[0].test(s)) return t.replace(s, s.replace(par[0], par[1]));
+    return null;
+  };
+
+  let en = localStorage.getItem("volta-lang") === "en";
+
+  function traducirDOM() {
+    if (!en) return;
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const pendientes = [];
+    let n;
+    while ((n = w.nextNode())) {
+      if (n.parentElement && n.parentElement.closest("#lang-btn")) continue;
+      const nuevo = traducirTexto(n.nodeValue);
+      if (nuevo !== null) pendientes.push([n, nuevo]);
+    }
+    for (const par of pendientes) par[0].nodeValue = par[1];
+    for (const el of document.querySelectorAll("[placeholder],[title],[aria-label]")) {
+      for (const attr of ["placeholder", "title", "aria-label"]) {
+        const v = el.getAttribute(attr);
+        if (!v) continue;
+        const nuevo = traducirTexto(v);
+        if (nuevo !== null) el.setAttribute(attr, nuevo);
+      }
+    }
+    document.documentElement.lang = "en";
+  }
+
+  const btn = document.createElement("button");
+  btn.id = "lang-btn";
+  btn.style.cssText =
+    "padding:6px 12px;border-radius:6px;border:1px solid currentColor;background:transparent;" +
+    "color:inherit;cursor:pointer;font:600 12px system-ui,sans-serif;opacity:.75";
+  btn.textContent = en ? "ES" : "EN";
+  btn.title = en ? "Ver en español" : "Switch to English";
+  btn.onclick = function () {
+    localStorage.setItem("volta-lang", en ? "es" : "en");
+    location.reload(); // repintar desde cero es lo único que devuelve el español
+  };
+  // En la barra superior, antes del chip de la ruta.
+  const barra = document.querySelector(".header__der");
+  if (barra) barra.insertBefore(btn, barra.firstChild);
+  else document.body.appendChild(btn);
+
+  // Se traduce despues de cada render, sin tocar el render original.
+  const renderOriginal = window.render;
+  if (typeof renderOriginal === "function") {
+    window.render = function () {
+      const r = renderOriginal.apply(this, arguments);
+      traducirDOM();
+      return r;
+    };
+  }
+  traducirDOM();
+})();
+
 </script>
 
 </body>

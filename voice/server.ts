@@ -24,10 +24,10 @@ const sesionRealtime = {
   instructions: sessionConfig.instructions,
   audio: {
     input: {
-      transcription: { model: "gpt-live-transcribe", language: "es" },
+      transcription: { model: "gpt-live-transcribe" },
       turn_detection: {
         type: "semantic_vad",
-        eagerness: "high", // <-- perilla de turnos: low | medium | high | auto
+        eagerness: "auto", // <-- perilla de turnos: low | medium | high | auto
         create_response: true,
         interrupt_response: true,
       },
@@ -78,6 +78,21 @@ const twilioPost = (recurso: string, campos: Record<string, string>) =>
 let salaActual: string | null = null;
 let twilioCallSid: string | null = null;
 
+// UNA llamada a la vez, sin excepciones. Sin este candado, el rellamado por
+// corte y el reintento por ruteo se dispararon juntos: tres llamadas en
+// rafaga, tres conferencias, y tres Voltas escuchandose entre ellos (uno
+// transcribia el saludo del otro como si fuera el transportista). Ademas es
+// el patron que los sistemas antifraude de telefonia leen como toll fraud.
+let llamadaEnCurso = false;
+
+// Rellamado cuando el transportista corta antes de resolver. Apagado por
+// defecto: en una demo, que el agente vuelva a llamar solo es mas riesgoso
+// que util. Se activa con MAX_REINTENTOS=1 en el .env.
+const MAX_REINTENTOS = Number(process.env.MAX_REINTENTOS ?? 0);
+let reintentos = 0;
+let ultimoDestino: string | null = null;
+let volviendoALlamar = false;
+
 // Colgar de verdad: se corta la pata de Twilio (el telefono) y la de
 // OpenAI. Sin esto end_call solo hacia que Volta se despidiera de palabra
 // y la llamada quedaba abierta hasta que cortaba el humano.
@@ -105,11 +120,17 @@ app.all("/twiml/bridge", (_req, res) => {
 
 // Camino de conferencia: el transportista entra a una sala y Volta se suma
 // como participante. Asi al escalar se puede sumar el operador sin cortar.
+const salasConVolta = new Set<string>();
+
 app.all("/twiml/conference", (_req, res) => {
   const sala = salaActual ?? "volta";
   res.type("text/xml").send(
     `<Response><Dial><Conference startConferenceOnEnter="true" endConferenceOnExit="true" beep="false" waitUrl="">${sala}</Conference></Dial></Response>`
   );
+  // Twilio puede pedir este TwiML mas de una vez para la misma llamada; sin
+  // este guardia entraban dos Voltas a la misma sala y se hablaban entre si.
+  if (salasConVolta.has(sala)) return;
+  salasConVolta.add(sala);
   sumarAVolta(sala);
 });
 
@@ -137,6 +158,51 @@ app.post("/call/operator", async (_req, res) => {
   res.status(r.status).json({ ok: r.ok, error: data.message });
 });
 
+// Las llamadas internacionales a veces fallan al enrutarse: Twilio devuelve
+// "failed" con duracion 0 y SIN codigo de error, y el telefono nunca suena.
+// Es intermitente y reintentar la resuelve. Sin esto, en la demo se traduce
+// en "no me llego la llamada" sin ninguna pista de por que.
+const MAX_REINTENTOS_RUTEO = 2;
+
+function vigilarRuteo(sid: string, to: string, intento: number) {
+  let chequeos = 0;
+  const t = setInterval(async () => {
+    if (++chequeos > 8) return clearInterval(t);
+    try {
+      const r = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Calls/${sid}.json`,
+        { headers: { Authorization: twilioAuth().Authorization } }
+      );
+      const c: any = await r.json();
+      // "busy" y "no-answer" significan que el telefono si sono: eso no se
+      // reintenta acá, es decision de la persona.
+      if (c.status !== "failed" && c.status !== "canceled") {
+        if (["completed", "in-progress", "answered"].includes(c.status)) clearInterval(t);
+        // Sono pero nadie atendio: no se reintenta (es decision de la
+        // persona), pero hay que soltar el candado o queda trabado.
+        if (["busy", "no-answer"].includes(c.status)) { clearInterval(t); llamadaEnCurso = false; }
+        return;
+      }
+      clearInterval(t);
+      if (intento >= MAX_REINTENTOS_RUTEO) {
+        llamadaEnCurso = false;
+        return console.error(`[ruteo] la llamada fallo ${intento + 1} veces, no reintento mas`);
+      }
+      console.log(`[ruteo] fallo sin sonar — reintento ${intento + 1}/${MAX_REINTENTOS_RUTEO} en 3s`);
+      llamadaEnCurso = false;
+      setTimeout(() => {
+        fetch("http://localhost:3000/call/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to, __reintento: true, __ruteo: intento + 1 }),
+        }).catch((e) => console.error("[ruteo] no se pudo reintentar:", e.message));
+      }, 3000);
+    } catch (e: any) {
+      console.error("[ruteo] no se pudo consultar el estado:", e.message);
+    }
+  }, 3000);
+}
+
 // Diagnostico: si esto se escucha, el TwiML corre y el problema es el SIP.
 app.all("/twiml/test", (_req, res) => {
   res.type("text/xml").send(
@@ -145,7 +211,16 @@ app.all("/twiml/test", (_req, res) => {
 });
 
 app.post("/call/start", async (req, res) => {
+  if (llamadaEnCurso) {
+    console.warn("[call/start] ya hay una llamada en curso — se ignora el pedido");
+    return res.status(409).json({ error: "ya hay una llamada en curso" });
+  }
+  llamadaEnCurso = true;
   const to = req.body?.to || process.env.DEMO_PHONE;
+  // Una llamada pedida a mano arranca de cero: no arrastra los reintentos
+  // de la anterior.
+  if (!req.body?.__reintento) { reintentos = 0; volviendoALlamar = false; }
+  ultimoDestino = to;
   // conferencia por defecto (permite escalar sin cortar); "bridge" es el
   // camino viejo de dos patas y "test" solo habla, para diagnostico.
   const modo = req.body?.twiml ?? "conference";
@@ -169,8 +244,11 @@ app.post("/call/start", async (req, res) => {
     const data: any = await r.json();
     if (data.sid) twilioCallSid = data.sid;
     console.log("[twilio] llamando a", to, "->", r.status, data.sid ?? data.message);
+    if (data.sid) vigilarRuteo(data.sid, to, Number(req.body?.__ruteo ?? 0));
+    else llamadaEnCurso = false; // Twilio rechazo el pedido: se libera el candado
     res.status(r.status).json({ sid: data.sid, to, error: data.message });
   } catch (e: any) {
+    llamadaEnCurso = false;
     console.error(e);
     res.status(500).json({ error: e.message });
   }
@@ -242,6 +320,9 @@ function controlarLlamada(callId: string) {
   // se calla. Sin esto se metería a hablar arriba de los dos humanos.
   let esperandoFraseDeTraspaso = false;
   let esperandoFraseDeCierre = false;
+  // Para decidir si vale la pena volver a llamar cuando se corta.
+  let cierreDeliberado = false;
+  let huboCommitment = false;
 
   const onToolCall = crearManejadorDeTools(callId, (motivo) => {
     esperandoFraseDeTraspaso = true;
@@ -262,6 +343,7 @@ function controlarLlamada(callId: string) {
     });
   }, () => {
     esperandoFraseDeCierre = true;
+    cierreDeliberado = true;
   });
 
   const ws = new WebSocket(`wss://api.openai.com/v1/realtime?call_id=${callId}`, {
@@ -279,7 +361,7 @@ function controlarLlamada(callId: string) {
         type: "realtime",
         audio: {
           input: {
-            transcription: { model: "gpt-live-transcribe", language: "es" },
+            transcription: { model: "gpt-live-transcribe" },
             turn_detection: {
               type: "semantic_vad",
               eagerness: "auto",
@@ -329,10 +411,16 @@ function controlarLlamada(callId: string) {
         `Estás llamando vos a: ${elegido?.nombre ?? "el transportista"}.\n` +
         `Cliente: ${op?.cliente}. Contenedor ${op?.contenedor_id}, de ${op?.puerto_origen} a ${op?.destino}.\n` +
         `Retiro: ${fecha}${horario}. Tope: ${mandato?.tope_precio} dólares.\n` +
-        `ARRANCÁ VOS: saludá a ${elegido?.nombre ?? "el transportista"} por su nombre, presentate ` +
-        `como Volta, decí en una frase de qué transporte se trata y preguntá si tiene ` +
-        `disponibilidad para esa fecha y ese horario. Breve, una idea. Nunca preguntes qué ` +
-        `necesita la contraparte: sos vos quien llama y quien pide.`;
+        `ARRANCÁ VOS Y EN INGLÉS: saludá a ${elegido?.nombre ?? "el transportista"} por su ` +
+        `nombre, presentate como Volta, decí en una frase de qué transporte se trata y preguntá ` +
+        `si tiene disponibilidad para esa fecha y ese horario. Breve, una idea. Nunca preguntes ` +
+        `qué necesita la contraparte: sos vos quien llama y quien pide. Si te contesta en otro ` +
+        `idioma, seguí en ese idioma desde el turno siguiente.` +
+        (volviendoALlamar
+          ? `\nOJO: la llamada anterior se cortó antes de cerrar nada. Estás volviendo a llamar. ` +
+            `Al abrir, reconocelo en media frase ("se nos cortó recién") y retomá donde quedaron ` +
+            `en vez de empezar de cero. No pidas disculpas de más ni lo repitas después.`
+          : "");
     } catch (e: any) {
       console.error("[apertura] no se pudo precargar contexto:", e.message);
     }
@@ -347,20 +435,19 @@ function controlarLlamada(callId: string) {
     enviar({ type: "response.create" });
   }
 
-  ws.on("open", () => console.log("[sip] control abierto", callId));
+  ws.on("open", () => {
+    console.log("[sip] control abierto", callId);
+    // La apertura se dispara acá y NO en session.created: al conectarse a
+    // una llamada SIP ya existente (?call_id=), la sesion ya esta creada y
+    // ese evento no llega nunca. Mientras se disparaba ahi, Volta arrancaba
+    // sin contexto y respondia a lo que dijera el transportista.
+    turnos(false);
+    setTimeout(abrirLlamada, 800);
+  });
 
   ws.on("message", async (raw) => {
     const ev = JSON.parse(raw.toString());
 
-    if (ev.type === "session.created") {
-      // Volta abre SIEMPRE la conversacion. Arranca con las respuestas
-      // automaticas apagadas: si el transportista dice "hola?" antes de que
-      // Volta termine de levantar contexto, el modelo respondia a eso y
-      // perdia el encuadre de que el es quien esta llamando.
-      turnos(false);
-      setTimeout(() => abrirLlamada(), 1200);
-      return;
-    }
 
     if (ev.type === "response.done" && ev.response.metadata?.topic === "resumen_escalacion") {
       const parte = (ev.response.output?.[0]?.content ?? []).find((c: any) => c.type === "output_text");
@@ -394,14 +481,17 @@ function controlarLlamada(callId: string) {
           console.error("[tool] fallo", item.name, e.message);
           result = { error: e.message };
         }
+        if (item.name === "record_commitment" && result?.aprobado) huboCommitment = true;
         enviar({
           type: "conversation.item.create",
           item: { type: "function_call_output", call_id: item.call_id, output: JSON.stringify(result) },
         });
       }
-      // Durante la apertura el encadenado lo maneja la secuencia de abajo,
-      // no el loop de tools.
-      if (hubo && apertura === "listo") enviar({ type: "response.create" });
+      // SIEMPRE pedir la respuesta que sigue a una tool. Cuando esto estaba
+      // condicionado al estado de la apertura y la apertura quedaba trabada,
+      // Volta ejecutaba la tool y despues se quedaba mudo para siempre:
+      // nadie le pedia que hablara.
+      if (hubo) enviar({ type: "response.create" });
 
       // Termino de saludar -> recien ahi se habilitan los turnos automaticos.
       if (apertura === "saludo" && !hubo) {
@@ -429,7 +519,29 @@ function controlarLlamada(callId: string) {
     if (ev.type === "error") console.error("[realtime]", ev.error);
   });
 
-  ws.on("close", () => console.log("[sip] llamada terminada", callId));
+  ws.on("close", () => {
+    console.log("[sip] llamada terminada", callId);
+    llamadaViva = null;
+    llamadaEnCurso = false;
+
+    // Si la llamada murio sin resolverse, el transportista corto. Volta
+    // vuelve a llamar una vez, retomando donde quedaron. No se rellama si
+    // Volta colgo a proposito, si ya hay commitment, o si esta escalada:
+    // en esos tres casos el corte es el final correcto.
+    const resuelta = cierreDeliberado || huboCommitment || escalacion.activa;
+    if (resuelta || reintentos >= MAX_REINTENTOS || !ultimoDestino) return;
+
+    reintentos++;
+    volviendoALlamar = true;
+    console.log(`[rellamado] cortaron sin resolver — reintento ${reintentos}/${MAX_REINTENTOS} en 8s`);
+    setTimeout(async () => {
+      await fetch("http://localhost:3000/call/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: ultimoDestino, __reintento: true }),
+      }).catch((e) => console.error("[rellamado] fallo:", e.message));
+    }, 8000);
+  });
   ws.on("error", (e) => console.error("[sip] ws error", e.message));
 }
 
