@@ -27,7 +27,7 @@ const sesionRealtime = {
       transcription: { model: "gpt-live-transcribe", language: "es" },
       turn_detection: {
         type: "semantic_vad",
-        eagerness: "auto", // <-- perilla de turnos: low | medium | high | auto
+        eagerness: "high", // <-- perilla de turnos: low | medium | high | auto
         create_response: true,
         interrupt_response: true,
       },

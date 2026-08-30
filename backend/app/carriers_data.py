@@ -78,7 +78,7 @@ class Transportista(TypedDict):
     ubicacion: Coordenadas  # base actual del transportista
     disposicion_a_negociar: int  # 1-5, cuánto margen suele ceder en el precio
     puntualidad: int  # 1-5, historial de cumplimiento
-    tarifa_referencia: float  # tarifa base típica, en MXN
+    tarifa_referencia: float  # tarifa base típica, en USD
     tasa_aceptacion_general: float  # 0.0-1.0, qué tan seguido acepta el trabajo
     tasa_aceptacion_corto_plazo: float  # 0.0-1.0, ídem pero pidiendo con poca anticipación
     telefono: str

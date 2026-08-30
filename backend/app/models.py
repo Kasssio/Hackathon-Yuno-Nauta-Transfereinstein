@@ -54,12 +54,12 @@ class MandatoCreate(BaseModel):
     """Lo que el humano completa para crear un mandato."""
 
     operacion_id: str
-    tope_precio: float = Field(..., gt=0, description="Monto máximo permitido, en MXN — el techo duro")
+    tope_precio: float = Field(..., gt=0, description="Monto máximo permitido, en USD — el techo duro")
     tarifa_objetivo: Optional[float] = Field(
         None,
         gt=0,
         description=(
-            "Monto al que Volta debería intentar cerrar primero, en MXN. Es distinto del "
+            "Monto al que Volta debería intentar cerrar primero, en USD. Es distinto del "
             "tope: el tope es el límite duro que nunca se cruza, el objetivo es la meta que "
             "se persigue antes de acercarse al tope. Opcional — si no se define, el motor de "
             "negociación usa un objetivo derivado del tope (ver negotiation.py)."
