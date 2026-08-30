@@ -922,7 +922,11 @@ async function crearMandato(d) {
   // donde Volta lee su tope y su ventana cuando atiende la llamada real.
   if (!USAR_BACKEND) {
     const m = altaMandatoLocal(d);
-    escribirMandatoEnBackend(d, m);
+    const creado = await escribirMandatoEnBackend(d, m);
+    // Con el mandato ya escrito, esperar evita que una llamada real tome la
+    // operación anterior por una carrera. Si el backend no está, no hay
+    // carrera que evitar y la ronda simulada arranca igual.
+    setTimeout(() => elegirYLlamar(m), creado ? 600 : 0);
     return m;
   }
   const op = await fetch(`${API}/operaciones`, {
@@ -973,8 +977,10 @@ async function escribirMandatoEnBackend(d, m) {
     m.backend_mandato_id = mandato.id;
     ensuciar();
     console.log("[backend] operacion", op.id, "| mandato", mandato.id, "| tope", d.tope, "| ventana", d.dia);
+    return true;
   } catch (e) {
     console.error("[backend] no se pudo crear el mandato:", e);
+    return false;
   }
 }
 
@@ -994,8 +1000,13 @@ async function abrirLlamadaReal(m, carrier) {
   try {
     const r = await fetch(`${VOZ}/call/start`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
-    }).then(r => r.json());
-    console.log("[llamada real]", r);
+    });
+    // El server contesta el rechazo de Twilio con JSON válido y un status de
+    // error. Sin mirar r.ok, la llamada se marcaba como "Sonando" y quedaba
+    // colgada ahí para siempre, esperando una transcripción que no llega.
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.sid) throw new Error(data.error || `call/start: ${r.status}`);
+    console.log("[llamada real]", data);
     ll.fase = "negociando";
     ll.fases.push({ k: "Sonando", ts: Date.now() });
     ensuciar();
@@ -1252,19 +1263,51 @@ function altaMandatoLocal(d) {
   };
   estado.mandatos.push(m);
   ensuciar();
-  setTimeout(() => elegirYLlamar(m), 2200);
   return m;
 }
 
-const rankear = () => CARRIERS
+// Ranking de respaldo sobre el catálogo local, para cuando el backend no
+// está arriba. El dashboard se abre con doble clic y es el plan B de la
+// demo: no puede quedarse mudo porque falte un servicio.
+const rankearLocal = () => CARRIERS
   .map(c => ({ carrier: c, esperado: Math.round(c.tarifa * (1 - c.flex)) }))
   .sort((a, b) => (a.esperado - b.esperado) || (b.carrier.score - a.carrier.score))
   .slice(0, 3);
 
-function elegirYLlamar(m) {
+async function rankear() {
+  let candidatos;
+  try {
+    candidatos = await fetch(
+      `${API}/transportistas?puerto=${encodeURIComponent(RUTA.origen)}&limite=3`
+    ).then(r => {
+      if (!r.ok) throw new Error(`transportistas: ${r.status}`);
+      return r.json();
+    });
+  } catch (e) {
+    console.warn("[backend] sin catálogo remoto, se usa el local:", e.message);
+    return rankearLocal();
+  }
+  return candidatos.map(c => ({
+    carrier: {
+      id: c.id,
+      nombre: c.nombre,
+      // El catálogo actual es de empresas; la UI reutiliza este campo para
+      // identificar a la contraparte de la llamada.
+      chofer: c.nombre,
+      tel: c.telefono,
+      score: c.puntualidad,
+      viajes: 0,
+      tarifa: c.tarifa_referencia,
+      flex: c.disposicion_a_negociar / 100,
+    },
+    esperado: c.tarifa_referencia,
+  }));
+}
+
+async function elegirYLlamar(m) {
   if (m.revocado) return;
   m.estado = "llamando";
-  m.candidatos = rankear();
+  m.candidatos = await rankear();
   ensuciar();
   // Las dos primeras se simulan; la tercera se marca de verdad por telefono.
   // El guard va adentro del timeout: el mandato puede revocarse en el medio.
