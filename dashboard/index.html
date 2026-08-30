@@ -2406,6 +2406,122 @@ function semilla() {
 // semilla() queda para probar la vista sin backend, pero NO corre sola: los
 // dos mandatos demo disparaban dos rondas a la vez y con llamadas reales de
 // por medio eso significa dos llamadas telefonicas simultaneas.
+
+/* --------------------------------------------------------------------------
+   SEMILLA ESTÁTICA — un caso ya escalado y uno ya cerrado.
+
+   Construye el estado final directamente: nada de timers, nada de
+   `dispararRondaDeLlamadas`, ninguna llamada telefónica. Sirve para entrar al
+   modo resolución y ver la pantalla completa sin esperar a que una ronda
+   escale sola, y para que el dashboard no arranque vacío en la demo.
+
+   Poner en false para arrancar limpio.
+   -------------------------------------------------------------------------- */
+const SEMILLA_DEMO = true;
+
+function llamadaCerrada(m, carrier, oferta, dentro, hace, turnos) {
+  const inicio = Date.now() - hace;
+  const fin = inicio + 96e3;
+  const ll = {
+    call_id: `call-${String(++seqCall).padStart(4, "0")}`, mandato_id: m.id,
+    carrier, chofer: carrier.chofer, direccion: "saliente",
+    inicio, fin, fase: dentro ? "cerrada" : "rechazada", oferta,
+    resumen: dentro ? `Cotizó ${moneda(oferta)}` : `${moneda(oferta)} — sobre el tope`,
+    pide_humano: false,
+    turnos: turnos.map((t, i) => ({ role: t[0], text: t[1], ts: inicio + (i + 1) * 12e3 })),
+    fases: [
+      { k: "Marcando", ts: inicio },
+      { k: "Atendió", ts: inicio + 8e3 },
+      { k: "Cotizó", ts: inicio + 34e3 },
+      { k: "Contraoferta de Volta", ts: inicio + 58e3 },
+      { k: dentro ? "Cotización en firme" : "Cerró sin acuerdo", ts: fin },
+    ],
+  };
+  estado.llamadas.push({ ...ll, id: ll.call_id, contraparte: carrier.nombre,
+    escalado: false, motivo_escalacion: null });
+  m.cotizaciones.push({ carrier, oferta, dentro, pide_humano: false, call_id: ll.call_id });
+  return ll;
+}
+
+function semillaEstatica() {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const manana = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+  const carrier = id => CARRIERS.find(c => c.id === id);
+
+  /* --- Caso A: cerrado dentro del mandato -------------------------------- */
+  const a = {
+    id: "MDT-001", operacion_id: "op-001", contenedor: "MSCU1234567",
+    dia: hoy, desde: "08:00", hasta: "12:00", tope_precio: 9000,
+    estado: "cerrado", creado_en: Date.now() - 42 * 60e3,
+    llamadas: [], cotizaciones: [], commitment_id: null,
+    candidatos: [{ carrier: carrier("tpa") }, { carrier: carrier("trn") }, { carrier: carrier("cvl") }],
+  };
+  estado.mandatos.push(a);
+
+  llamadaCerrada(a, carrier("trn"), 8084, true, 40 * 60e3, [
+    ["agent", `Buenas, le hablo de ${RUTA.cliente}. Necesito un camión de ${RUTA.origen} a ${RUTA.destino} el ${fechaLarga(hoy)}, retiro entre 08:00 y 12:00.`],
+    ["user", "Déjeme ver… sí, tengo unidad para esa franja."],
+    ["user", "Por esa ruta le queda en 8.600."],
+    ["agent", "Tengo autorizado hasta 9.000. ¿Lo podemos ajustar?"],
+    ["user", "Mire… se lo dejo en 8.084 y cerramos."],
+  ]);
+  llamadaCerrada(a, carrier("cvl"), 8138, true, 36 * 60e3, [
+    ["agent", "Buenas, necesito un camión de Manzanillo a Guadalajara para hoy a la mañana."],
+    ["user", "Tengo disponibilidad. Le sale 8.750."],
+    ["agent", "¿Puede acercarse un poco más?"],
+    ["user", "No puedo bajar de 8.138, es mi costo."],
+  ]);
+  llamadaCerrada(a, carrier("tpa"), 7954, true, 32 * 60e3, [
+    ["agent", "Buenas, ¿tiene unidad para hoy entre las ocho y el mediodía?"],
+    ["user", "Sí. Se lo hago en 8.200."],
+    ["agent", "Tengo autorizado hasta 9.000, pero quiero cerrar hoy. ¿Su mejor número?"],
+    ["user", "7.954 y arrancamos."],
+    ["agent", "Perfecto. Confirmo 7.954, retiro hoy a las ocho, contenedor MSCU1234567."],
+  ]);
+  registrarCommitment(a, a.cotizaciones.find(q => q.carrier.id === "tpa"));
+
+  /* --- Caso B: nadie bajó del tope → escalado ---------------------------- */
+  const b = {
+    id: "MDT-002", operacion_id: "op-002", contenedor: "TCLU7788990",
+    dia: manana, desde: "14:00", hasta: "18:00", tope_precio: 7000,
+    estado: "escalado", creado_en: Date.now() - 14 * 60e3,
+    llamadas: [], cotizaciones: [], commitment_id: null,
+    candidatos: [{ carrier: carrier("tpa") }, { carrier: carrier("trn") }, { carrier: carrier("cvl") }],
+  };
+  estado.mandatos.push(b);
+
+  llamadaCerrada(b, carrier("cvl"), 8138, false, 12 * 60e3, [
+    ["agent", `Buenas, necesito un camión de ${RUTA.origen} a ${RUTA.destino} el ${fechaLarga(manana)}, retiro entre 14:00 y 18:00.`],
+    ["user", "Para mañana a la tarde… le queda en 8.750."],
+    ["agent", "Eso está por encima de lo que puedo autorizar. ¿Puede mejorarlo?"],
+    ["user", "No puedo bajar de 8.138, es mi costo."],
+    ["agent", "Entiendo, pero sigue fuera de lo que tengo autorizado. No puedo comprometerlo."],
+  ]);
+  llamadaCerrada(b, carrier("trn"), 8084, false, 9 * 60e3, [
+    ["agent", "Buenas, ¿tiene unidad para mañana a la tarde, de Manzanillo a Guadalajara?"],
+    ["user", "Tengo, pero está complicado el regreso. 8.600."],
+    ["agent", "Está por encima de lo que puedo autorizar. ¿Hay margen?"],
+    ["user", "Le puedo hacer 8.084 y ya estoy trabajando a pérdida."],
+    ["agent", "Se lo agradezco, pero no puedo cerrarlo en ese valor."],
+  ]);
+  llamadaCerrada(b, carrier("tpa"), 7954, false, 6 * 60e3, [
+    ["agent", "Buenas, necesito cubrir un retiro mañana entre las dos y las seis."],
+    ["user", "Mañana a la tarde tengo poca unidad. 8.200, y es real."],
+    ["agent", "Entiendo la situación. Está fuera de lo que puedo autorizar hoy."],
+    ["user", "Le dejo 7.954 y no bajo más. Es mi último número."],
+    ["agent", "Le agradezco. No puedo comprometer ese monto — lo derivo a un responsable de la operación."],
+  ]);
+
+  // El guardrail rechaza el mejor intento y queda el rastro de por qué.
+  registrarCommitment(b, b.cotizaciones.find(q => q.carrier.id === "tpa"));
+  escalar(b, "oferta fuera de mandato",
+    `Ningún transportista bajó del tope de ${moneda(b.tope_precio)}`,
+    `La mejor cotización fue ${moneda(7954)} de Transportes Pacífico, ${moneda(954)} por encima del mandato. Volta no comprometió nada.`);
+
+  ensuciar();
+}
+
+if (SEMILLA_DEMO) semillaEstatica();
 render();
 
 /* ==========================================================================
