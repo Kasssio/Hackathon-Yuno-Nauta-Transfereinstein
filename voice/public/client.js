@@ -199,6 +199,22 @@ export async function onToolCall(name, args) {
     return { aprobado: data.aprobado, motivo: data.motivo };
   }
 
+  if (name === "get_commitment_vigente") {
+    const { operacion } = await resolverOperacionActual();
+    const cs = await (await fetch(`${BACKEND_URL}/operaciones/${operacion.id}/commitments`)).json();
+    const vigente = cs.filter((c) => c.aprobado && !c.cancelado).pop();
+    if (!vigente) return { hay_reserva: false };
+    return {
+      hay_reserva: true,
+      contraparte: vigente.contraparte,
+      monto: vigente.monto,
+      fecha_retiro: vigente.fecha_retiro,
+      hora_retiro: vigente.hora_retiro,
+      tipo: vigente.tipo,
+      detalle: vigente.detalle,
+    };
+  }
+
   if (name === "escalate_to_human") {
     motivoEscalacion = args.motivo || "";
     esperandoFraseDeTraspaso = true;
@@ -246,6 +262,75 @@ export async function onToolCall(name, args) {
 // handleEvent) es la que efectivamente saluda — y esa sí se genera con
 // `response.create` sin ningún override, o sea con el fat prompt entero
 // disponible, tal como cualquier otra respuesta de la llamada.
+// El humano puede revocar el mandato mientras la llamada esta en curso — es
+// el momento del trial by fire. El guardrail ya impedia cerrar nada, pero
+// Volta no se enteraba hasta que intentaba comprometerse: seguia regateando
+// y quedaba mal. Aca se entera en el momento.
+let vigilanciaMandato = null;
+
+function vigilarMandato() {
+  if (vigilanciaMandato) return;
+  vigilanciaMandato = setInterval(async () => {
+    try {
+      const m = await onToolCall("check_mandato", {});
+      if (!m || !m.revocado) return;
+      clearInterval(vigilanciaMandato);
+      vigilanciaMandato = null;
+      console.log("[mandato] REVOCADO en vivo — cortando la negociacion");
+      dc.send(JSON.stringify({ type: "response.cancel" }));
+      dc.send(JSON.stringify({
+        type: "response.create",
+        response: {
+          instructions:
+            "URGENTE: mientras hablabas, tu empresa dio de baja la autorización para esta " +
+            "operación. Ya no podés acordar, confirmar ni prometer nada, ni siquiera lo que " +
+            "venías conversando. Decíselo a la contraparte AHORA, en una sola frase, sin " +
+            "tecnicismos y sin nombrar mandatos ni sistemas: que surgió un cambio de tu lado y " +
+            "no podés cerrar la reserva, que los van a contactar. No des detalles, no negocies " +
+            "más, no aceptes nada. Inmediatamente después llamá a end_call.",
+        },
+      }));
+    } catch (e) { /* backend caido: se reintenta en el proximo ciclo */ }
+  }, 4000);
+}
+
+// Modo entrante: el chofer llama a Volta. Mismo pipeline; lo unico que
+// cambia es que Volta atiende en vez de pedir.
+let modoEntrante = false;
+
+async function saludarEntrante() {
+  let ctx = "";
+  try {
+    const [op, mandato, com] = await Promise.all([
+      onToolCall("get_operacion_actual", {}),
+      onToolCall("check_mandato", {}),
+      onToolCall("get_commitment_vigente", {}),
+    ]);
+    ctx =
+      "CONTEXTO — ES UNA LLAMADA ENTRANTE, TE ESTAN LLAMANDO A VOS. " +
+      `Operación: ${op?.cliente}, contenedor ${op?.contenedor_id}, de ${op?.puerto_origen} a ${op?.destino}. ` +
+      (com?.hay_reserva
+        ? `Reserva vigente: ${com.contraparte}, ${com.monto} dólares, retiro ${com.fecha_retiro} ${com.hora_retiro ?? ""}. `
+        : "Todavía no hay ninguna reserva cerrada. ") +
+      `Podés mover el retiro solo dentro de ${mandato?.ventana_inicio} a ${mandato?.ventana_fin}` +
+      (mandato?.horario_inicio ? `, entre las ${mandato.horario_inicio} y las ${mandato.horario_fin}` : "") +
+      `, hasta ${mandato?.tope_precio} dólares. ` +
+      "No sabés quién llama: preguntá con quién hablás y de qué transportista, y pedile que " +
+      "confirme el número de contenedor antes de darle datos de la operación. ";
+  } catch (e) {
+    console.error("[apertura entrante] sin contexto:", e);
+  }
+  dc.send(JSON.stringify({
+    type: "response.create",
+    response: {
+      instructions:
+        ctx +
+        "ATENDÉ AHORA EN INGLÉS con un saludo corto: identificate como Volta y dejá que te digan " +
+        "a qué llaman. No ofrezcas ni preguntes por disponibilidad: no sos vos quien llama.",
+    },
+  }));
+}
+
 function saludarInicial() {
   dc.send(JSON.stringify({
     type: "response.create",
@@ -458,7 +543,8 @@ async function connect() {
     dc.addEventListener("open", () => {
       setStatus("en llamada");
       btn("escalar").disabled = false;
-      saludarInicial();
+      if (modoEntrante) saludarEntrante(); else saludarInicial();
+      vigilarMandato();
     });
 
     const offer = await pc.createOffer();
@@ -481,6 +567,7 @@ async function connect() {
 }
 
 function hangup() {
+  if (vigilanciaMandato) { clearInterval(vigilanciaMandato); vigilanciaMandato = null; }
   if (latencyRAF) cancelAnimationFrame(latencyRAF);
   latencyRAF = null;
   pc?.close();
@@ -502,7 +589,8 @@ function interrupt() {
   console.log("[barge-in] response.cancel enviado");
 }
 
-btn("connect").onclick = connect;
+btn("connect").onclick = () => { modoEntrante = false; connect(); };
+if (btn("entrante")) btn("entrante").onclick = () => { modoEntrante = true; connect(); };
 btn("hangup").onclick = hangup;
 btn("interrupt").onclick = interrupt;
 btn("escalar").onclick = escalarManual;

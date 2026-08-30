@@ -261,8 +261,19 @@ app.post("/openai/webhook", async (req, res) => {
   if (ev?.type !== "realtime.call.incoming") return;
 
   const callId = ev.data.call_id;
-  console.log("[sip] llamada entrante", callId);
   transcripcion = [];
+
+  // Si nosotros no iniciamos nada, es una llamada ENTRANTE de verdad: el
+  // chofer o el dispatcher llamando a Volta. Si llamadaEnCurso ya estaba en
+  // true, este webhook es la pata SIP de nuestra propia saliente.
+  const entrante = !llamadaEnCurso;
+  if (entrante) llamadaEnCurso = true;
+
+  const cabeceras: any[] = ev.data.sip_headers ?? [];
+  const desde = (cabeceras.find((h) => h.name?.toLowerCase() === "from")?.value ?? "")
+    .replace(/^sip:/, "")
+    .split("@")[0];
+  console.log(`[sip] llamada ${entrante ? "ENTRANTE de " + (desde || "desconocido") : "saliente"}`, callId);
 
   const r = await fetch(`https://api.openai.com/v1/realtime/calls/${callId}/accept`, {
     method: "POST",
@@ -271,7 +282,7 @@ app.post("/openai/webhook", async (req, res) => {
   });
   if (!r.ok) return console.error("[sip] accept fallo", r.status, await r.text());
 
-  controlarLlamada(callId);
+  controlarLlamada(callId, entrante, desde);
 });
 
 // Lo que el dashboard consulta para saber si tiene que sonar la alarma.
@@ -315,7 +326,7 @@ app.post("/call/return", (_req, res) => {
 });
 
 // El WebSocket no lleva audio: es el canal de control de la llamada.
-function controlarLlamada(callId: string) {
+function controlarLlamada(callId: string, entrante = false, desde = "") {
   // Se pone en true al escalar; cuando termina la frase de traspaso, Volta
   // se calla. Sin esto se metería a hablar arriba de los dos humanos.
   let esperandoFraseDeTraspaso = false;
@@ -388,7 +399,76 @@ function controlarLlamada(callId: string) {
   // antes de que hable. Antes Volta lo levantaba con tres tool calls, o sea
   // tres ciclos de respuesta: 5 a 8 segundos de silencio despues de que el
   // transportista atendia, que el llenaba diciendo "hola".
+  // Cruza el numero de quien llama contra el catalogo de transportistas.
+  // Es la primera barrera contra suplantacion en una entrante, y ademas le
+  // ahorra a Volta tener que preguntar con quien habla.
+  async function identificarLlamante(): Promise<string | null> {
+    if (!desde) return null;
+    try {
+      const soloDigitos = (t: string) => (t || "").replace(/\D/g, "");
+      const mio = soloDigitos(desde);
+      const r: any = await onToolCall("find_carriers", {});
+      for (const c of r?.candidatos ?? []) {
+        const suyo = soloDigitos(c.telefono);
+        if (suyo && mio && (mio.endsWith(suyo.slice(-8)) || suyo.endsWith(mio.slice(-8)))) {
+          return c.nombre;
+        }
+      }
+    } catch { /* sin catalogo, Volta pregunta a mano */ }
+    return null;
+  }
+
+  async function abrirLlamadaEntrante() {
+    let quien: string | null = null;
+    let ctx = "";
+    try {
+      quien = await identificarLlamante();
+      const [op, mandato, com]: any = await Promise.all([
+        onToolCall("get_operacion_actual", {}),
+        onToolCall("check_mandato", {}),
+        onToolCall("get_commitment_vigente", {}),
+      ]);
+      ctx =
+        `
+
+CONTEXTO DE ESTA LLAMADA — ES ENTRANTE, TE ESTAN LLAMANDO A VOS
+` +
+        (quien
+          ? `El número que llama figura en el catálogo como ${quien}. Mencionalo y pedí ` +
+            `confirmación, no lo des por hecho.
+`
+          : `El número que llama NO figura en el catálogo. Preguntá con quién hablás y de qué ` +
+            `transportista, y pedile que confirme el número de contenedor antes de darle ` +
+            `cualquier dato de la operación.
+`) +
+        `Operación: ${op?.cliente}, contenedor ${op?.contenedor_id}, de ${op?.puerto_origen} a ${op?.destino}.
+` +
+        (com?.hay_reserva
+          ? `Reserva vigente: ${com.contraparte}, ${com.monto} dólares, retiro ${com.fecha_retiro} ${com.hora_retiro ?? ""}.
+`
+          : `Todavía no hay ninguna reserva cerrada para esta operación.
+`) +
+        `Podés mover el retiro solo dentro de: ${mandato?.ventana_inicio} a ${mandato?.ventana_fin}` +
+        (mandato?.horario_inicio ? `, entre las ${mandato.horario_inicio} y las ${mandato.horario_fin}` : "") +
+        `, hasta ${mandato?.tope_precio} dólares.
+` +
+        `ATENDÉ EN INGLÉS con un saludo corto — identificate como Volta y dejá que te digan a qué ` +
+        `llaman. No ofrezcas ni preguntes por disponibilidad: no sos vos quien llama esta vez.`;
+    } catch (e: any) {
+      console.error("[apertura entrante] sin contexto:", e.message);
+    }
+    enviar({
+      type: "session.update",
+      session: { type: "realtime", instructions: sessionConfig.instructions + ctx },
+    });
+    apertura = "saludo";
+    enviar({ type: "response.create" });
+    vigilarMandato();
+    console.log("[apertura] entrante | llamante:", quien ?? "desconocido");
+  }
+
   async function abrirLlamada() {
+    if (entrante) return abrirLlamadaEntrante();
     let ctx = "";
     try {
       const [op, carriers, mandato]: any = await Promise.all([
@@ -433,6 +513,40 @@ function controlarLlamada(callId: string) {
     });
     apertura = "saludo";
     enviar({ type: "response.create" });
+    vigilarMandato();
+  }
+
+  // El humano puede revocar el mandato mientras la llamada esta en curso —
+  // es el momento del trial by fire. El guardrail ya impedia cerrar nada,
+  // pero Volta no se enteraba hasta que intentaba comprometerse: seguia
+  // regateando y quedaba mal. Acá se entera en el momento.
+  let vigilancia: NodeJS.Timeout | null = null;
+  function vigilarMandato() {
+    if (vigilancia) return;
+    vigilancia = setInterval(async () => {
+      try {
+        const m: any = await onToolCall("check_mandato", {});
+        if (!m?.revocado) return;
+        clearInterval(vigilancia!);
+        vigilancia = null;
+        console.log("[mandato] REVOCADO en vivo — cortando la negociación");
+        enviar({ type: "response.cancel" });
+        enviar({
+          type: "response.create",
+          response: {
+            instructions:
+              "URGENTE: mientras hablabas, tu empresa dio de baja la autorización para esta " +
+              "operación. Ya no podés acordar, confirmar ni prometer nada, ni siquiera lo que " +
+              "venías conversando. Decíselo a la contraparte AHORA, en una sola frase, sin " +
+              "tecnicismos y sin nombrar mandatos ni sistemas: que surgió un cambio de tu lado y " +
+              "no podés cerrar la reserva, que los van a contactar. No des detalles, no negocies " +
+              "más, no aceptes nada. Inmediatamente después llamá a end_call.",
+          },
+        });
+      } catch {
+        /* backend caido: se reintenta en el proximo ciclo */
+      }
+    }, 4000);
   }
 
   ws.on("open", () => {
@@ -523,6 +637,7 @@ function controlarLlamada(callId: string) {
     console.log("[sip] llamada terminada", callId);
     llamadaViva = null;
     llamadaEnCurso = false;
+    if (vigilancia) { clearInterval(vigilancia); vigilancia = null; }
 
     // Si la llamada murio sin resolverse, el transportista corto. Volta
     // vuelve a llamar una vez, retomando donde quedaron. No se rellama si

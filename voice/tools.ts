@@ -162,6 +162,24 @@ export function crearManejadorDeTools(
       return { aprobado: data.aprobado, motivo: data.motivo };
     }
 
+    if (name === "get_commitment_vigente") {
+      const { operacion } = await resolverOperacionActual();
+      const cs: any[] = await (
+        await fetch(`${BACKEND_URL}/operaciones/${operacion.id}/commitments`)
+      ).json();
+      const vigente = cs.filter((c) => c.aprobado && !c.cancelado).pop();
+      if (!vigente) return { hay_reserva: false };
+      return {
+        hay_reserva: true,
+        contraparte: vigente.contraparte,
+        monto: vigente.monto,
+        fecha_retiro: vigente.fecha_retiro,
+        hora_retiro: vigente.hora_retiro,
+        tipo: vigente.tipo,
+        detalle: vigente.detalle,
+      };
+    }
+
     if (name === "escalate_to_human") {
       console.log("[escalacion]", args.motivo);
       alEscalar?.(args.motivo || "");
