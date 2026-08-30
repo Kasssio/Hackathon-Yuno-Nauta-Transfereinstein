@@ -524,13 +524,13 @@ def test_pedir_el_maximo_directamente_no_lo_adelanta():
 
 
 # ---------------------------------------------------------------------------
-# 16. Volta solo propone números redondos, múltiplos de 100
+# 16. Volta solo propone números redondos, múltiplos de 10
 # ---------------------------------------------------------------------------
 
-def test_propuesta_de_volta_es_siempre_multiplo_de_100():
+def test_propuesta_de_volta_es_siempre_multiplo_de_10():
     """Con un objetivo/tope deliberadamente no redondos, cada monto que
     Volta propone a lo largo de varias rondas tiene que caer en un
-    múltiplo de 100 — nunca los decimales de cálculo interno de la
+    múltiplo de 10 — nunca los decimales de cálculo interno de la
     escalera de concesión."""
     mandato = _mandato(tope_precio=8930.0, tarifa_objetivo=8347.0)
     estado = _estado(mandato)
@@ -539,33 +539,33 @@ def test_propuesta_de_volta_es_siempre_multiplo_de_100():
         oferta = _oferta(monto=monto)
         decision = evaluar_oferta(estado, mandato, oferta, _contexto())
         if decision.monto_a_comunicar is not None:
-            assert decision.monto_a_comunicar % 100 == 0
+            assert decision.monto_a_comunicar % 10 == 0
             assert decision.monto_a_comunicar <= mandato.tope_precio
         estado = _negociar_ronda(estado, mandato, decision, oferta)
 
 
 def test_objetivo_derivado_no_redondo_se_propone_redondeado():
     """El objetivo derivado (tope * ratio, sin definir tarifa_objetivo) casi
-    nunca cae justo en un múltiplo de 100 — igual tiene que comunicarse
+    nunca cae justo en un múltiplo de 10 — igual tiene que comunicarse
     redondeado."""
     mandato = _mandato(tope_precio=8930.0, tarifa_objetivo=None)
     estado = _estado(mandato)
     oferta = _oferta(monto=15000.0)
     decision = evaluar_oferta(estado, mandato, oferta, _contexto())
     assert decision.monto_a_comunicar is not None
-    assert decision.monto_a_comunicar % 100 == 0
+    assert decision.monto_a_comunicar % 10 == 0
 
 
 def test_redondeo_nunca_empuja_la_propuesta_por_encima_del_tope():
     """Si el paso final de la escalera (el máximo mismo) no es múltiplo de
-    100, redondear 'hacia arriba' lo pasaría del tope — el motor tiene que
+    10, redondear 'hacia arriba' lo pasaría del tope — el motor tiene que
     redondear para abajo en ese caso, nunca superar el límite duro."""
-    mandato = _mandato(tope_precio=8950.0, tarifa_objetivo=8500.0)  # 8950 no es múltiplo de 100
+    mandato = _mandato(tope_precio=8955.0, tarifa_objetivo=8500.0)  # 8955 no es múltiplo de 10
     estado = _estado(mandato, ultima_oferta_volta=8500.0, estrategia_actual=EstrategiaModo.cierre)
     oferta = _oferta(monto=8900.0, tipo_respuesta=TipoRespuestaConductor.contraoferta)
     decision = evaluar_oferta(estado, mandato, oferta, _contexto(candidatos_restantes=0))
     assert decision.monto_a_comunicar is not None
-    assert decision.monto_a_comunicar % 100 == 0
+    assert decision.monto_a_comunicar % 10 == 0
     assert decision.monto_a_comunicar <= mandato.tope_precio
 
 

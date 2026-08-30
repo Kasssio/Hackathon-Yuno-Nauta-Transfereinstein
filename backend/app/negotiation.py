@@ -44,8 +44,8 @@ from .models import (
 # ---------------------------------------------------------------------------
 
 # Si no se definió tarifa_objetivo en el mandato, se deriva del tope con este
-# ratio (objetivo = tope * ratio). 0.94 sobre un tope de $9.000 da $8.460 —
-# cerca del $8.500 del ejemplo de Sofía sin hardcodear ese número.
+# ratio (objetivo = tope * ratio). 0.94 sobre un tope de $450 da $423 —
+# cerca del objetivo del ejemplo sin hardcodear ese número.
 DEFAULT_OBJETIVO_RATIO = 0.94
 
 # Escalera de concesión: en qué fracción del camino entre objetivo y máximo
@@ -111,20 +111,20 @@ def _paso_actual(estado: EstadoNegociacion, estrategia: EstrategiaModo) -> int:
     return sum(1 for r in estado.rondas if r.oferta_volta is not None)
 
 
-def _redondear_a_multiplo_de_100(monto: float, tope: float) -> float:
+def _redondear_a_multiplo_de_10(monto: float, tope: float) -> float:
     """Volta negocia como negociaría una persona: en números redondos, no
     con decimales de cálculo interno. Esto SOLO se aplica a un monto que
     Volta mismo propone (paso de la escalera) — nunca a un monto que ya
     dijo la contraparte y que Volta simplemente acepta tal cual (ver
     `es_oferta_aceptable` en `evaluar_oferta`, que usa `monto_conductor`
-    directo, sin pasar por acá). Redondeo hacia el múltiplo de 100 más
+    directo, sin pasar por acá). Redondeo hacia el múltiplo de 10 más
     cercano (mitad para arriba); si eso cae por encima del tope, se
     redondea para abajo en su lugar — el redondeo nunca puede ser la
     forma en que una propuesta termina superando lo autorizado."""
 
-    redondeado = math.floor(monto / 100 + 0.5) * 100
+    redondeado = math.floor(monto / 10 + 0.5) * 10
     if redondeado > tope:
-        redondeado = math.floor(tope / 100) * 100
+        redondeado = math.floor(tope / 10) * 10
     return float(redondeado)
 
 
@@ -133,7 +133,7 @@ def _monto_en_paso(paso: int, estrategia: EstrategiaModo, objetivo: float, maxim
     fraccion = escalera[min(paso, len(escalera) - 1)]
     monto = objetivo + fraccion * (maximo - objetivo)
     monto = min(monto, maximo)  # el clamp del paso: nunca > maximo, pase lo que pase
-    return _redondear_a_multiplo_de_100(monto, maximo)
+    return _redondear_a_multiplo_de_10(monto, maximo)
 
 
 def _hubo_concesion_del_conductor(estado: EstadoNegociacion, monto_actual: Optional[float]) -> bool:
