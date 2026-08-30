@@ -82,19 +82,12 @@ http://192.168.1.23:3000
 siempre). Ahí atiende la llamada y habla con Volta como si fuera el
 transportista.
 
-**Antes de eso, en ESA laptop (la del transportista) hay que habilitar el
-micrófono para esa dirección**, porque Chrome solo expone `getUserMedia` en
-"contextos seguros" (https, o localhost) — una IP de red local por http
-plano no cuenta, y sin este paso el botón de atender tira
-`cannot read properties of undefined (reading 'getUserMedia')`:
-
-1. Andá a `chrome://flags/#unsafely-treat-insecure-origin-as-secure`
-2. En el campo de texto, escribí la misma URL de arriba: `http://192.168.1.23:3000`
-3. Poné el desplegable de al lado en **Enabled**
-4. Apretá **Relaunch** abajo de todo
-
-Se hace una sola vez por máquina — después de reiniciar Chrome, esa
-dirección puntual queda tratada como segura y el micrófono funciona normal.
+**⚠️ Si al apretar "Atender llamada" te aparece un error tipo `cannot
+read properties of undefined (reading 'getUserMedia')`** en el estado de
+la página, es porque el navegador no te deja usar el micrófono fuera de
+`localhost` sin HTTPS — ver la sección "Arreglar el error de micrófono
+(getUserMedia) — túnel HTTPS" más abajo, es la forma más confiable de
+resolverlo.
 
 **5. La persona agente** abre `dashboard/index.html` como archivo local de
 siempre, pero agregando el parámetro `server` en la barra de direcciones:
@@ -116,15 +109,120 @@ dispositivos entre sí, "client isolation", y esto no va a andar) — armar un
 hotspot personal desde un celular y conectar las dos laptops ahí es el
 fallback más confiable.
 
-**Límite a tener en cuenta:** la escalación a humano ("Atender llamada"
-desde Modo Resolución) asume que quien atiende está en la MISMA máquina que
-tiene la llamada abierta — al atender, la dashboard abre la pestaña de voz
-en el navegador de quien clickeó, pero el micrófono y el audio real de la
-llamada viven únicamente en la pestaña de la persona transportista. Para
-esta demo a dos computadoras, entonces, probar la escalación desde la
-máquina de la persona transportista (no remotamente desde la del agente) —
-sumar una escalación que de verdad cruce de una compu a la otra requeriría
-un puente de audio entre navegadores que no está construido.
+**La escalación a humano SÍ cruza de una compu a la otra.** Al apretar
+"Atender llamada" en Modo Resolución, la dashboard abre
+`voice/public/operador.html` en la máquina del agente — esa pestaña prende
+el micrófono del agente y arma una conexión de audio propia (WebRTC,
+señalizada por el mismo server de voz) directo contra la pestaña del
+transportista, en paralelo a la llamada que el transportista sigue
+teniendo con Volta (que se queda en silencio mientras dura la escalación).
+Ver "Puente de audio con el operador" más abajo para el detalle y las
+mismas consideraciones de HTTPS/micrófono que en la sección anterior —
+aplican igual del lado del operador.
+
+## Arreglar el error de micrófono (getUserMedia) — túnel HTTPS
+
+Los navegadores solo dejan usar el micrófono (`navigator.mediaDevices.
+getUserMedia`) en páginas servidas por HTTPS, o en `http://localhost`. Una
+IP de LAN por `http://` plano (`http://192.168.1.23:3000`) no cuenta como
+"seguro", así que `navigator.mediaDevices` directamente no existe ahí — de
+ahí el error `cannot read properties of undefined (reading 'getUserMedia')`
+al apretar "Atender llamada" desde la computadora del transportista.
+
+Hay un flag de Chrome (`chrome://flags/#unsafely-treat-insecure-origin-as-
+secure`) que en teoría lo evita, pero en la práctica es frágil: hay que
+tipear el origen exacto, reiniciar Chrome de verdad, y solo funciona en
+Chrome/Chromium (no en Safari ni Firefox) — si la IP cambia o el navegador
+no es Chrome, vuelve a romperse. La solución confiable es exponer el
+server de voz por HTTPS de verdad con un túnel, y ya no depende de flags ni
+de qué navegador use cada uno:
+
+**1. Instalá `cloudflared`** en la máquina "servidor" (la misma que corre
+`npm run dev`), una sola vez:
+
+```bash
+# Mac, con Homebrew:
+brew install cloudflared
+
+# Sin Homebrew (Mac o Linux), bajando el binario directo:
+# https://github.com/cloudflare/cloudflared/releases → cloudflared-darwin-arm64.tgz (o el que corresponda)
+
+# Windows: instalador en
+# https://github.com/cloudflare/cloudflared/releases (cloudflared-windows-amd64.msi)
+```
+
+**2. Con `npm run dev` ya corriendo** (server de voz en el puerto 3000),
+abrí OTRA terminal y corré:
+
+```bash
+cloudflared tunnel --url http://localhost:3000
+```
+
+Va a imprimir una URL como `https://palabras-al-azar.trycloudflare.com` —
+esa es la que usa la persona transportista, en cualquier navegador, en
+cualquier red (ni siquiera hace falta que esté en el mismo Wi-Fi que la
+máquina servidor: el túnel sale a internet, así que hasta anda con datos
+móviles). No hace falta ningún flag ni configuración del lado del
+navegador.
+
+**No hace falta un segundo túnel para el backend (puerto 8000).** El
+server de voz ahora hace de proxy: todo pedido a `/backend/*` en el puerto
+3000 se reenvía él mismo al backend (por default a
+`http://localhost:8000`, asumiendo que corren en la misma máquina, que es
+el setup normal). El navegador del transportista solo le habla a un único
+origen — el túnel — así que esto no rompe nada de lo que ya usa el
+backend (`find_carriers`, cotizaciones, commitments, etc.).
+
+**La dashboard de la persona agente sigue igual que antes**, con
+`?server=192.168.1.23` apuntando a la máquina servidor por LAN — no hace
+falta tocar nada ahí, porque la dashboard no usa el micrófono y ya tenía
+CORS abierto.
+
+**Si preferís seguir con el flag de Chrome en vez del túnel** (por ejemplo
+si no hay internet y solo hace falta LAN): `chrome://flags/#unsafely-
+treat-insecure-origin-as-secure`, pegá ahí el origen exacto (por ejemplo
+`http://192.168.1.23:3000`, sin barra al final), "Enable", y "Relaunch"
+(una pestaña nueva no alcanza, hay que reiniciar Chrome entero).
+
+## Puente de audio con el operador (escalación en vivo)
+
+Cuando el transportista pide hablar con una persona y Volta escala, el
+agente aprieta "Atender llamada" en Modo Resolución de la dashboard. Eso
+abre `voice/public/operador.html` — UNA PÁGINA DISTINTA de `index.html`,
+pensada para el operador, no para el transportista:
+
+- El transportista sigue en su pestaña de siempre (`index.html`), en la
+  MISMA llamada que ya tenía con Volta — nunca se va de ahí ni pierde esa
+  conexión.
+- El operador, en `operador.html`, aprieta "Conectar micrófono": eso prende
+  SU mic y arma una `RTCPeerConnection` propia directo contra la pestaña
+  del transportista (no contra OpenAI — Volta no participa de este audio).
+  La señalización (SDP/ICE) viaja por el mismo WebSocket `/panel` que ya se
+  usaba para transcripción y control; `server.ts` solo la reenvía de una
+  pestaña a la otra, no le importa el contenido.
+- Mientras dura la escalación, Volta queda en modo texto (no habla, no
+  reacciona a audio — ver `setTurnDetection(false)` en `entrarEnEscalacion`
+  de `client.js`), así que el transportista solo escucha al operador.
+  "Devolver a Volta" (desde cualquiera de las dos pestañas, o desde el
+  botón de la dashboard) cierra el puente y hace que Volta retome.
+
+**El operador también necesita HTTPS o localhost para el micrófono**, por
+la misma razón que el transportista (ver la sección de arriba). Si el
+operador está en otra máquina, la dashboard tiene que apuntar `VOZ` al
+túnel HTTPS en vez de a la IP de LAN — agregá `&voz=` a la URL con la que
+abrís la dashboard:
+
+```
+file:///.../dashboard/index.html?server=192.168.1.23&voz=https://palabras-al-azar.trycloudflare.com
+```
+
+(`?server=` sigue siendo para el backend — puede seguir siendo la IP de
+LAN, esa parte no necesita HTTPS. `?voz=` es solo para el server de voz,
+que es el que de verdad usa el micrófono en las dos puntas.)
+
+Si agente y transportista están en la MISMA máquina (una sola compu, dos
+pestañas), ninguno de estos dos parámetros hace falta — `localhost` ya
+cuenta como origen seguro para el navegador.
 
 ## Si algo falla en Windows
 
