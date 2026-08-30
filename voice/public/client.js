@@ -35,12 +35,93 @@ function abrirPanel() {
       const data = JSON.parse(e.data);
       if (data.type === "volver_a_volta" && escalado) volverAVolta();
       if (data.type === "operador_atiende") setStatus("ESCALADO — operador conectado desde el dashboard");
+      // Puente de audio con el operador humano — ver la sección más abajo.
+      if (data.type === "operador_listo") conectarConOperador();
+      if (data.type === "operador_desconectado") cerrarPuenteOperador();
+      if (data.type === "webrtc-answer" && pcOperador) {
+        pcOperador.setRemoteDescription({ type: "answer", sdp: data.sdp })
+          .catch((e) => console.error("[operador] setRemoteDescription", e));
+      }
+      if (data.type === "webrtc-ice" && data.candidate && pcOperador) {
+        pcOperador.addIceCandidate(data.candidate).catch((e) => console.error("[operador] ICE", e));
+      }
     });
     panelWs.addEventListener("error", () => {}); // sin dashboard escuchando, no pasa nada
   } catch (e) { console.error("[panel] no se pudo conectar", e); }
 }
 function enviarAlPanel(o) {
   if (panelWs?.readyState === WebSocket.OPEN) panelWs.send(JSON.stringify(o));
+}
+
+// ===== Puente de audio con el operador humano (escalación en vivo) =====
+// SEGUNDA RTCPeerConnection, en paralelo a `pc` (la que habla con OpenAI) —
+// nunca la reemplaza ni la toca. Se arma cuando llega "operador_listo": eso
+// significa que en otra máquina (o en otra pestaña) alguien abrió
+// voice/public/operador.html desde el botón "Atender llamada" del
+// dashboard y ya prendió su micrófono. La señalización (SDP/ICE) viaja por
+// el mismo WebSocket /panel que ya usábamos para transcripción y control —
+// server.ts solo la reenvía, no la entiende.
+//
+// El micrófono es el MISMO `micStream` que ya usa `pc`: un MediaStreamTrack
+// se puede sumar a más de una RTCPeerConnection a la vez, así que esto no
+// le saca audio a la conexión con OpenAI (que igual está en modo texto
+// mientras dura la escalación, ver entrarEnEscalacion / setTurnDetection).
+// Esta segunda conexión SÍ necesita servidores STUN (a diferencia de `pc`,
+// la que habla con OpenAI): ahí el otro extremo es un server público de
+// OpenAI, siempre alcanzable de frente, así que el navegador no necesita
+// ayuda para encontrarlo. Acá el otro extremo es OTRO NAVEGADOR, atrás de
+// su propio router — sin STUN, las dos puntas solo pueden encontrarse si
+// están en la MISMA red local (candidatos "host" directos); con STUN,
+// cada una descubre su IP pública y el puerto que le asignó su NAT
+// ("candidato srflx"), que es lo que hace falta para conectar entre dos
+// redes distintas (agente y transportista en dos Wi-Fi separados).
+const ICE_SERVERS = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ],
+};
+
+let pcOperador = null;
+let audioOperador = null;
+
+async function conectarConOperador() {
+  if (pcOperador || !micStream) return;
+  console.log("[operador] armando puente de audio");
+  const miTrack = micStream.getTracks()[0];
+  console.log("[operador] mi mic para este puente:", miTrack.readyState, "| enabled:", miTrack.enabled, "| muted:", miTrack.muted);
+  pcOperador = new RTCPeerConnection(ICE_SERVERS);
+  pcOperador.addTrack(miTrack);
+  audioOperador = document.createElement("audio");
+  audioOperador.autoplay = true;
+  pcOperador.ontrack = (e) => {
+    console.log("[operador] track remoto recibido:", e.track.kind, "| muted:", e.track.muted, "| streams:", e.streams.length);
+    audioOperador.srcObject = e.streams[0];
+    // autoplay=true no siempre alcanza para un <audio> creado por JS y sin
+    // insertar en el documento — si el navegador lo bloquea, .play() tira
+    // un error (NotAllowedError) que antes quedaba en silencio total, sin
+    // ninguna pista en la consola de que ESE era el problema.
+    audioOperador.play().catch((err) => console.error("[operador] audio.play() bloqueado:", err));
+  };
+  pcOperador.onicecandidate = (e) => {
+    if (e.candidate) enviarAlPanel({ type: "webrtc-ice", candidate: e.candidate });
+  };
+  pcOperador.onconnectionstatechange = () => {
+    console.log("[operador] conexión:", pcOperador?.connectionState);
+  };
+  try {
+    const offer = await pcOperador.createOffer();
+    await pcOperador.setLocalDescription(offer);
+    enviarAlPanel({ type: "webrtc-offer", sdp: offer.sdp });
+  } catch (e) {
+    console.error("[operador] no se pudo armar la oferta", e);
+  }
+}
+
+function cerrarPuenteOperador() {
+  pcOperador?.close();
+  pcOperador = null;
+  audioOperador = null;
 }
 
 // ===== PUNTO DE INTEGRACIÓN: transcripción =====
@@ -52,14 +133,16 @@ export function onTranscript(role, text) {
   window.dispatchEvent(new CustomEvent("volta-transcript", { detail: { role, text } }));
 }
 
-// Antes era "http://localhost:8000" fijo — rompía apenas esta página se
-// abría desde otra computadora (localhost ahí apunta a ESA máquina, no a la
-// que corre el backend). Se deriva del host con el que se cargó esta
-// página: si la abriste como http://192.168.1.23:3000, pega contra
-// http://192.168.1.23:8000. Asume que el backend corre en la MISMA máquina
-// que este server de voz (mismo supuesto de siempre, solo que ahora
-// funciona también en red local, no solo en localhost).
-const BACKEND_URL = `http://${location.hostname}:8000`;
+// Antes era "http://localhost:8000" fijo, y después se derivaba de
+// location.hostname (pega directo al puerto 8000 de quien sea que sirvió
+// esta página). Ahora pega siempre contra ESTE MISMO origen, en /backend/*
+// — server.ts hace de proxy hacia el backend real (ver "Proxy al backend"
+// en server.ts). Así da lo mismo si esta página se abrió como localhost,
+// como IP de LAN, o detrás de un túnel HTTPS: nunca hay un segundo
+// host:puerto que adivinar, y ese túnel HTTPS es justo lo que hace falta
+// para que el navegador habilite el micrófono (getUserMedia) fuera de
+// localhost.
+const BACKEND_URL = "/backend";
 
 // La operación activa se resuelve una sola vez, al conectar — así el
 // modelo nunca tiene que saber ids. Para la demo alcanza con la
@@ -94,7 +177,15 @@ async function resolverOperacionActual() {
   if (operacionActual) return operacionActual;
   const ops = await (await fetch(`${BACKEND_URL}/operaciones`)).json();
   if (!ops.length) throw new Error("no hay ninguna operación creada — correr seed_demo.py primero");
-  const operacion = ops[0];
+  // Antes era ops[0] (la MÁS VIEJA) — con backend/data/state.json
+  // acumulando operaciones de corridas anteriores (no se borra solo, ver
+  // .gitignore), esto hacía que Volta agarrara datos de prueba de hace
+  // rato en vez del mandato que el agente acababa de crear en la
+  // dashboard justo antes de la llamada. ops.at(-1) es la ÚLTIMA creada —
+  // la de esta corrida — asumiendo que la API las devuelve en el orden en
+  // que se crearon (que es lo que hace, ver GET /operaciones en el
+  // backend).
+  const operacion = ops.at(-1);
   const mandato = await (await fetch(`${BACKEND_URL}/operaciones/${operacion.id}/mandato`)).json();
   operacionActual = { operacion, mandato };
   return operacionActual;
@@ -473,6 +564,7 @@ function armarCierre() {
 
 function volverAVolta() {
   escalado = false;
+  cerrarPuenteOperador();
   setTurnDetection(true);
   dc.send(JSON.stringify({
     type: "response.create",
@@ -599,6 +691,15 @@ async function connect() {
   candidatoActual = null;
   candidatosRestantes = null;
   cotizacionesRegistradas.length = 0;
+  // Sin esto, una vez que esta pestaña resolvía una operación/mandato UNA
+  // vez (la primera llamada de prueba del día, por ejemplo) se quedaba
+  // sirviendo ESA misma para siempre, aunque después se creara un mandato
+  // nuevo desde la dashboard — Volta seguía hablando con datos viejos
+  // porque resolverOperacionActual() nunca volvía a pedirle nada al
+  // backend. Al resetear acá, cada llamada nueva agarra la operación más
+  // reciente que haya en ese momento (ver el comentario en
+  // resolverOperacionActual sobre por qué es la última, no la primera).
+  operacionActual = null;
   abrirPanel();
   try {
     const sesion = await (await fetch("/session", { method: "POST" })).json();
@@ -656,6 +757,7 @@ function hangup() {
   if (vigilanciaMandato) { clearInterval(vigilanciaMandato); vigilanciaMandato = null; }
   if (latencyRAF) cancelAnimationFrame(latencyRAF);
   latencyRAF = null;
+  cerrarPuenteOperador();
   panelWs?.close();
   panelWs = null;
   pc?.close();

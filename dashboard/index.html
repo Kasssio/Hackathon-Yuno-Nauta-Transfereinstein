@@ -883,6 +883,30 @@ body.foco #vista-res { display: block; flex: 1; min-height: 0; overflow-y: auto;
   </form>
 </dialog>
 
+<!-- Popup de escalación en vivo: se abre solo cuando Volta pide un humano de
+     verdad (ver ESCALACION EN VIVO más abajo) — además del beep y de que la
+     vista salte sola a Modo Resolución, esto es lo que hace que sea
+     imposible no darse cuenta, aunque el agente esté mirando otra pantalla
+     o otro caso. -->
+<dialog class="modal" id="alerta-escalacion">
+  <div class="form__head">
+    <div class="form__t">Intervención humana requerida</div>
+  </div>
+  <div class="form__c">
+    <div class="res-alerta">
+      <div class="res-alerta__i" id="alerta-esc-ico"></div>
+      <div>
+        <div class="res-alerta__t">Volta pidió un humano</div>
+        <div class="res-alerta__q">Un transportista está esperando a un operador</div>
+        <div class="res-alerta__d" id="alerta-esc-detalle">—</div>
+      </div>
+    </div>
+  </div>
+  <div class="form__p">
+    <button type="button" class="btn btn--primario" id="alerta-esc-ok">Ir a la llamada</button>
+  </div>
+</dialog>
+
 <script>
 /* ==========================================================================
    CAPA DE DATOS
@@ -949,7 +973,14 @@ async function crearMandato(d) {
 // Al confirmar el mandato arranca la ronda: el backend rankea los
 // transportistas del puerto, se cotizan dos en simulado y al mejor se
 // lo llama por telefono de verdad (Twilio -> SIP -> Volta).
-const VOZ = `http://${SERVER_HOST}:3000`;
+//
+// El operador TAMBIÉN necesita micrófono (ver cajaLlamadaReal más abajo), y
+// el navegador solo lo habilita en https:// o localhost — igual que le pasa
+// al transportista. Si el server de voz está detrás de un túnel HTTPS (ver
+// README_voice.md, "Arreglar el error de micrófono"), pasá esa URL completa
+// acá con ?voz=, en vez de armarla por IP de LAN:
+// dashboard/index.html?server=192.168.1.23&voz=https://algo.trycloudflare.com
+const VOZ = new URLSearchParams(location.search).get("voz") || `http://${SERVER_HOST}:3000`;
 
 // El mandato se escribe en el backend aunque la vista corra local: es de
 // donde Volta lee su tope y su ventana cuando atiende la llamada real.
@@ -2029,10 +2060,12 @@ function cajaResumenReal() {
 
 /* -- Control de la llamada real: mismo lugar y mismo tipo de botón que
    controlLlamada() usa para las simuladas ("Atender llamada a X"), pero acá
-   "atender" abre la pestaña de voice/public/index.html en vez de sumar un
-   teléfono a una conferencia de Twilio — es la MISMA llamada WebRTC que ya
-   está en curso ahí, el operador solo se cambia de pestaña y habla por el
-   micrófono de esa página. */
+   "atender" abre voice/public/operador.html en vez de sumar un teléfono a
+   una conferencia de Twilio. Esa pestaña es un puente de audio PROPIO
+   (RTCPeerConnection directa contra la pestaña del transportista, ver
+   conectarConOperador() en client.js) — no la misma página que usa el
+   transportista, así que el operador prende SU PROPIO micrófono ahí, en su
+   propia máquina, y queda conectado en vivo con el transportista. */
 function cajaLlamadaReal() {
   const caja = el("div", "res-caja");
   const h = el("div", "res-caja__h");
@@ -2040,8 +2073,9 @@ function cajaLlamadaReal() {
   const b = el("div", "res-caja__b");
   b.append(controlLlamadaReal());
   const nota = el("div", null,
-    "Twilio está suspendido: esta llamada corre por WebRTC en la pestaña de voz. " +
-    "Al atender se abre esa pestaña — hablá por el micrófono ahí.");
+    "Twilio está suspendido: esta llamada corre por WebRTC. Al atender se abre una pestaña " +
+    "nueva (operador.html) donde prendés TU micrófono y quedás conectado en vivo con el " +
+    "transportista — Volta se queda escuchando en silencio hasta que apretás \"Devolver a Volta\".");
   nota.style.cssText = "font-size:11.5px;color:var(--ink-3);line-height:1.5";
   b.append(nota);
   caja.append(h, b);
@@ -2063,7 +2097,7 @@ function controlLlamadaReal() {
         if (r.ok) {
           vozReal.atendiendo = true;
           vozReal.inicioAtencion = Date.now();
-          window.open(VOZ, "volta_llamada_real");
+          window.open(`${VOZ}/operador.html`, "volta_operador");
         }
       } catch (e) { /* server de voz abajo */ }
       refrescar();
@@ -2702,9 +2736,11 @@ render();
    está disponible, o el fallback por navegador mientras esa cuenta está
    suspendida — ver server.ts, sección "PUENTE CON EL NAVEGADOR"): el caso
    entra a `estado.escalaciones` como cualquier otro y se resuelve con el
-   MISMO botón "Atender llamada" de siempre, desde Modo Resolución — no hay
-   un panel flotante aparte, solo la alarma sonora para no perderse el caso
-   si no se está mirando esa vista.
+   MISMO botón "Atender llamada" de siempre, desde Modo Resolución. Tres
+   avisos a la vez para que sea imposible no darse cuenta, esté el agente
+   mirando lo que esté mirando: el beep, el salto automático a Modo
+   Resolución, y el popup (#alerta-escalacion, un <dialog> nativo — bloquea
+   el resto de la pantalla hasta que se cierra).
    ========================================================================== */
 (function escalacionEnVivo() {
   let sonando = false, ctx = null;
@@ -2718,9 +2754,29 @@ render();
     } catch (e) {}
   }
 
+  const dlgAlerta = document.getElementById("alerta-escalacion");
+  const icoAlerta = document.getElementById("alerta-esc-ico");
+  if (icoAlerta) icoAlerta.append(ico("alerta", 21));
+  document.getElementById("alerta-esc-ok").onclick = () => dlgAlerta.close();
+  // Clickear afuera del popup (el backdrop) también lo cierra — mismo gesto
+  // que ya usa el drawer de detalle en esta misma dashboard.
+  dlgAlerta.addEventListener("click", (e) => { if (e.target === dlgAlerta) dlgAlerta.close(); });
+
+  // El popup entero depende de que ESTA máquina (la del agente) pueda
+  // pegarle por red a VOZ. Si no puede — túnel caído, IP de LAN vieja,
+  // faltó el ?voz= al abrir la dashboard, firewall — antes esto fallaba
+  // en silencio (el catch de abajo no avisaba nada) y la única señal era
+  // "nunca sonó nada", indistinguible de "no escaló nadie todavía". Con
+  // este toast, una desconexión se nota apenas pasa, no recién cuando ya
+  // era tarde para atender la escalación.
+  let vozOk = true;
   setInterval(async () => {
     try {
       const { escalacion: e, transcripcion: t } = await fetch(`${VOZ}/call/status`).then(r => r.json());
+      if (!vozOk) {
+        vozOk = true;
+        toast("ok", "Reconectado con el server de voz", VOZ);
+      }
       vozReal.transcripcion = t ?? [];
       if (e?.resumen) vozReal.resumen = e.resumen;
 
@@ -2739,7 +2795,11 @@ render();
         if (!sonando) { sonando = true; beep(); setTimeout(beep, 400); setTimeout(beep, 800); }
         casoActivo = "esc-real";
         alternarResolucion(true);
+        document.getElementById("alerta-esc-detalle").textContent =
+          e.motivo || "El transportista está esperando a un operador.";
+        if (!dlgAlerta.open) dlgAlerta.showModal();
       } else if (!e?.activa && yaEsta) {
+        if (dlgAlerta.open) dlgAlerta.close();
         // El operador ya devolvió el control (o Volta cerró sola): sale de
         // la lista y, si era el caso que se estaba mirando, se vuelve.
         estado.escalaciones = estado.escalaciones.filter(x => x.id !== "esc-real");
@@ -2749,7 +2809,15 @@ render();
 
       ensuciar();
       if (modoResolucion) render();
-    } catch (err) { /* server de voz abajo: se reintenta */ }
+    } catch (err) {
+      if (vozOk) {
+        vozOk = false;
+        console.error("[escalación en vivo] no se pudo conectar a", `${VOZ}/call/status`, err);
+        toast("bad", "No se puede conectar con el server de voz",
+          `Chequeá VOZ (${VOZ}): ¿túnel caído, IP vieja, o falta ?voz= en la URL de la dashboard? ` +
+          "Mientras esto esté así, una escalación real no va a avisar acá.");
+      }
+    }
   }, 1500);
 })();
 tick();

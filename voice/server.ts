@@ -53,6 +53,34 @@ app.post("/session", async (_req, res) => {
 });
 
 // ---------------------------------------------------------------------
+// Proxy al backend: el navegador le habla siempre al mismo origen que
+// sirve esta página (este server.ts, puerto 3000), nunca directo al
+// puerto 8000. Así da lo mismo si ese origen es "localhost", una IP de
+// LAN o un túnel HTTPS (necesario para que getUserMedia funcione fuera
+// de localhost) — no hay que exponer un segundo puerto ni pelear con
+// hostnames distintos para cada uno.
+// ---------------------------------------------------------------------
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+
+app.all(/^\/backend\/(.*)/, async (req, res) => {
+  const resto = req.params[0];
+  const query = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+  const destino = `${BACKEND_URL}/${resto}${query}`;
+  try {
+    const init: RequestInit = { method: req.method, headers: { "Content-Type": "application/json" } };
+    if (req.method !== "GET" && req.method !== "HEAD") init.body = JSON.stringify(req.body ?? {});
+    const r = await fetch(destino, init);
+    const texto = await r.text();
+    res.status(r.status);
+    res.setHeader("Content-Type", r.headers.get("content-type") || "application/json");
+    res.send(texto);
+  } catch (e: any) {
+    console.error("[proxy backend]", e.message);
+    res.status(502).json({ error: "backend inalcanzable", detail: e.message });
+  }
+});
+
+// ---------------------------------------------------------------------
 // Llamada saliente por teléfono: Twilio disca y puentea al SIP de OpenAI
 // ---------------------------------------------------------------------
 
@@ -147,18 +175,28 @@ async function sumarAVolta(sala: string, intento = 1) {
 
 // Suma al operador humano a la sala en curso (escalacion).
 app.post("/call/operator", async (_req, res) => {
+  // El navegador (fallback mientras Twilio está suspendido — ver más abajo,
+  // "PUENTE CON EL NAVEGADOR") tiene prioridad si está conectado: "atender"
+  // no suma un teléfono real a una conferencia, avisa a esa pestaña que el
+  // operador está. Mismos endpoints para las dos vías: el dashboard no
+  // necesita saber cuál está corriendo.
+  //
+  // OJO: antes esto se decidía mirando `!salaActual` PRIMERO — pero
+  // `salaActual` se pone en un valor no-null la primera vez que se pide
+  // /call/start (el camino de Twilio) y NUNCA se resetea a null solo, ni
+  // siquiera cuando esa llamada termina. Resultado: un solo intento viejo
+  // de llamada por Twilio, en CUALQUIER momento desde que el proceso
+  // arrancó, dejaba a este endpoint tratando de sumar un teléfono a una
+  // conferencia muerta (la cuenta está suspendida) para siempre — aunque
+  // la llamada real, ahora mismo, fuera 100% por navegador. Mirar
+  // `panelNavegador` primero es la señal correcta: es la conexión VIVA de
+  // ahora, no un rastro de una llamada de Twilio de hace rato.
+  if (panelNavegador) {
+    escalacion.atendida = true;
+    panelNavegador.send(JSON.stringify({ type: "operador_atiende" }));
+    return res.json({ ok: true, via: "navegador" });
+  }
   if (!salaActual) {
-    // Sin llamada SIP/Twilio en curso: si hay una llamada de navegador viva
-    // (fallback mientras la cuenta de Twilio está suspendida — ver más
-    // abajo, "PUENTE CON EL NAVEGADOR"), "atender" no suma un teléfono real
-    // a una conferencia, avisa a esa pestaña que el operador está. Mismos
-    // endpoints para las dos vías: el dashboard no necesita saber cuál está
-    // corriendo.
-    if (panelNavegador) {
-      escalacion.atendida = true;
-      panelNavegador.send(JSON.stringify({ type: "operador_atiende" }));
-      return res.json({ ok: true, via: "navegador" });
-    }
     return res.status(409).json({ error: "no hay llamada en curso" });
   }
   const r = await twilioPost(`/Conferences/${encodeURIComponent(salaActual)}/Participants.json`, {
@@ -352,19 +390,59 @@ app.post("/call/return", (_req, res) => {
 /* ==========================================================================
    PUENTE CON EL NAVEGADOR — fallback mientras Twilio está suspendido
    --------------------------------------------------------------------------
-   public/index.html (WebRTC directo contra OpenAI, sin SIP ni Twilio) abre
-   este WebSocket mientras dura su llamada. No lleva audio — es el único
-   canal de control hacia esa pestaña: le avisa a este server la
-   transcripción y las escalaciones en vivo (que se vuelcan en las MISMAS
-   variables `escalacion`/`transcripcion` de arriba, así /call/status sirve
-   para las dos vías sin que el dashboard tenga que saber cuál está
-   corriendo), y recibe la orden de "devolver a Volta" que el operador puede
-   mandar desde el botón del dashboard sin venir a esta pestaña.
+   Dos roles distintos comparten el mismo WS path "/panel", distinguidos por
+   ?rol= en la query string:
+
+   - "llamada" (default, sin query — lo abre public/index.html mientras dura
+     LA llamada real con Volta): le avisa a este server la transcripción y
+     las escalaciones en vivo (se vuelcan en las MISMAS variables
+     `escalacion`/`transcripcion` de arriba, así /call/status sirve para
+     Twilio o para esta vía sin que el dashboard tenga que saber cuál está
+     corriendo), y recibe la orden de "devolver a Volta" que el operador
+     puede mandar desde el botón del dashboard sin venir a esta pestaña.
+
+   - "operador" (lo abre public/operador.html, la pestaña que el DASHBOARD
+     abre con window.open al apretar "Atender llamada" en Modo Resolución):
+     es el humano que se suma a hablar con el transportista.
+
+   Ninguno de los dos mensajes de control lleva audio — el audio real entre
+   el transportista y el operador es una RTCPeerConnection PROPIA, en
+   paralelo a la que ya tiene el transportista contra OpenAI (ver
+   conectarConOperador() en client.js). Este WS es solo el canal de
+   señalización de esa segunda conexión: cualquier mensaje `{type: "webrtc-
+   ..."}` que llega de un lado se reenvía tal cual al otro, sin que este
+   server entienda ni toque el SDP/ICE.
    ========================================================================== */
-let panelNavegador: WebSocket | null = null;
+let panelNavegador: WebSocket | null = null; // la pestaña de voz del transportista (rol "llamada")
+let panelOperador: WebSocket | null = null;  // la pestaña del operador humano (rol "operador"), solo existe durante una escalación en vivo
 const wssPanel = new WebSocketServer({ noServer: true });
 
-wssPanel.on("connection", (ws) => {
+wssPanel.on("connection", (ws, req) => {
+  const rol = new URL(req.url ?? "/panel", "http://x").searchParams.get("rol") === "operador"
+    ? "operador"
+    : "llamada";
+
+  if (rol === "operador") {
+    panelOperador = ws;
+    console.log("[panel] operador conectado");
+    // Este es el momento real en que las dos puntas están listas para
+    // intercambiar SDP/ICE — no se dispara desde POST /call/operator porque
+    // ahí la pestaña del operador todavía ni cargó (recién se está abriendo
+    // con window.open). Si esta conexión llega y la del transportista ya no
+    // está, no pasa nada: el transportista puede haber colgado justo antes.
+    if (panelNavegador) panelNavegador.send(JSON.stringify({ type: "operador_listo" }));
+
+    ws.on("message", (raw) => {
+      if (panelNavegador) panelNavegador.send(raw.toString());
+    });
+    ws.on("close", () => {
+      console.log("[panel] operador desconectado");
+      if (panelOperador === ws) panelOperador = null;
+      if (panelNavegador) panelNavegador.send(JSON.stringify({ type: "operador_desconectado" }));
+    });
+    return;
+  }
+
   panelNavegador = ws;
   // Llamada nueva: se limpia el rastro de la anterior.
   transcripcion = [];
@@ -374,6 +452,10 @@ wssPanel.on("connection", (ws) => {
   ws.on("message", (raw) => {
     let data: any;
     try { data = JSON.parse(raw.toString()); } catch { return; }
+    if (typeof data.type === "string" && data.type.startsWith("webrtc-")) {
+      if (panelOperador) panelOperador.send(raw.toString());
+      return;
+    }
     if (data.type === "transcript" && data.text?.trim()) {
       transcripcion.push({ role: data.role, text: data.text, ts: Date.now() });
     } else if (data.type === "resumen") {
@@ -754,7 +836,9 @@ const httpServer = app.listen(3000, () => console.log("http://localhost:3000"));
 // cuelga del mismo server HTTP, en su propio path, para no interferir con
 // nada de lo que ya corre en el puerto 3000.
 httpServer.on("upgrade", (req, socket, head) => {
-  if (req.url === "/panel") {
+  // req.url trae la query string (ej. "/panel?rol=operador") — comparar
+  // solo el path para no romper el matching por el "?rol=...".
+  if ((req.url ?? "").split("?")[0] === "/panel") {
     wssPanel.handleUpgrade(req, socket, head, (ws) => wssPanel.emit("connection", ws, req));
   } else {
     socket.destroy();
