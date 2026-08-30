@@ -9,6 +9,9 @@ let esperandoFraseDeTraspaso = false;
 let motivoEscalacion = "";
 let esperandoFraseDeCierre = false;
 let motivoFinLlamada = "";
+// El corte normal espera output_audio_buffer.stopped. Esto evita interrumpir
+// una despedida que todavía se está reproduciendo; el timer solo es respaldo.
+let cierreProgramado = null;
 
 const statusEl = () => document.getElementById("status");
 const setStatus = (s) => (statusEl().textContent = s);
@@ -266,6 +269,15 @@ export async function onToolCall(name, args) {
     motivoFinLlamada = args.motivo || "";
     esperandoFraseDeCierre = true;
     console.log("[end_call]", motivoFinLlamada);
+    // Si por algún problema no llega output_audio_buffer.stopped, este timer
+    // evita dejar la sesión abierta. No se usa para calcular el final normal.
+    if (!cierreProgramado) {
+      cierreProgramado = setTimeout(() => {
+        cierreProgramado = null;
+        console.log("[hangup] fallback de end_call");
+        hangup();
+      }, 15000);
+    }
     return {
       ok: true,
       instruccion:
@@ -507,6 +519,16 @@ async function handleEvent(ev) {
     onTranscript("agent", ev.transcript);
   }
 
+  // En WebRTC, Realtime avisa con este evento que el buffer de salida ya se
+  // drenó. Recién entonces cerramos, dejando una cola mínima para el audio
+  // que todavía pueda estar en el jitter buffer local.
+  if (ev.type === "output_audio_buffer.stopped" && esperandoFraseDeCierre) {
+    esperandoFraseDeCierre = false;
+    if (cierreProgramado) clearTimeout(cierreProgramado);
+    console.log("[hangup] audio de despedida terminado");
+    cierreProgramado = setTimeout(() => hangup(), 750);
+  }
+
   if (ev.type === "response.done") {
     if (ev.response.metadata?.topic === "resumen_escalacion") {
       const parte = (ev.response.output?.[0]?.content ?? []).find((c) => c.type === "output_text");
@@ -540,15 +562,6 @@ async function handleEvent(ev) {
       entrarEnEscalacion();
     }
 
-    if (esperandoFraseDeCierre && !huboToolCall) {
-      esperandoFraseDeCierre = false;
-      setStatus("cortando — la llamada no servía (" + motivoFinLlamada + ")");
-      // Le damos un momento a la frase de cierre para que termine de
-      // reproducirse antes de cortar de verdad — no hay (todavía) un
-      // evento del lado del cliente que avise "el audio ya terminó de
-      // sonar", así que esto es un heurístico corto, no una garantía.
-      setTimeout(() => hangup(), 2500);
-    }
   }
 
   if (ev.type === "error") console.error("[realtime error]", ev.error);
@@ -612,6 +625,8 @@ async function connect() {
 }
 
 function hangup() {
+  if (cierreProgramado) clearTimeout(cierreProgramado);
+  cierreProgramado = null;
   if (vigilanciaMandato) { clearInterval(vigilanciaMandato); vigilanciaMandato = null; }
   if (latencyRAF) cancelAnimationFrame(latencyRAF);
   latencyRAF = null;
