@@ -23,6 +23,30 @@ const BACKEND_URL = "http://localhost:8000";
 // primera operación que devuelva el backend (la que crea seed_demo.py).
 let operacionActual = null;
 
+// call_id estable para TODA la llamada (antes se regeneraba en cada tool
+// call con "call-" + Date.now(), lo que rompía cualquier cosa que necesite
+// identificar "la misma llamada" a través de varias tools — como el motor
+// de negociación, que arma su estado por call_id). Se fija una vez en
+// connect() y se limpia en hangup().
+let callId = null;
+
+// El candidato con el que estamos hablando EN ESTA llamada — se fija una
+// sola vez, con el primero que devuelve find_carriers (ver el comentario
+// en saludarInicial: "tratá al primero de la lista como el transportista
+// específico que estás llamando ahora mismo"). candidatosRestantes es una
+// estimación simple para el motor de negociación (cuántos otros candidatos
+// quedan en la lista de esta ronda); mejorAlternativaMonto es el mejor
+// monto ya cotizado con OTRO candidato via request_quote, si hay alguno.
+let candidatoActual = null;
+let candidatosRestantes = null;
+const cotizacionesRegistradas = [];
+
+function calcularMejorAlternativaMonto() {
+  const otras = cotizacionesRegistradas.filter((c) => c.contraparte !== candidatoActual?.nombre);
+  if (!otras.length) return null;
+  return Math.min(...otras.map((c) => c.monto));
+}
+
 async function resolverOperacionActual() {
   if (operacionActual) return operacionActual;
   const ops = await (await fetch(`${BACKEND_URL}/operaciones`)).json();
@@ -63,6 +87,13 @@ export async function onToolCall(name, args) {
     if (args.max_distancia_km != null) params.set("max_distancia_km", args.max_distancia_km);
     if (args.limite != null) params.set("limite", args.limite);
     const candidatos = await (await fetch(`${BACKEND_URL}/transportistas?${params}`)).json();
+    // Solo se fija una vez por llamada — si find_carriers se vuelve a
+    // llamar en el medio de la misma llamada no queremos "cambiar" de
+    // candidato a mitad de conversación.
+    if (!candidatoActual && candidatos.length) {
+      candidatoActual = { id: candidatos[0].id, nombre: candidatos[0].nombre };
+      candidatosRestantes = Math.max(0, candidatos.length - 1);
+    }
     return { candidatos };
   }
 
@@ -74,6 +105,8 @@ export async function onToolCall(name, args) {
       tope_precio: fresco.tope_precio,
       ventana_inicio: fresco.ventana_inicio,
       ventana_fin: fresco.ventana_fin,
+      horario_inicio: fresco.horario_inicio ?? null,
+      horario_fin: fresco.horario_fin ?? null,
       revocado: fresco.revocado,
       vigente_hasta: fresco.vigente_hasta,
     };
@@ -86,14 +119,45 @@ export async function onToolCall(name, args) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         operacion_id: operacion.id,
-        call_id: "call-" + Date.now(),
+        call_id: callId ?? "call-" + Date.now(),
         contraparte: args.contraparte,
         monto: args.monto,
         fecha_retiro: args.fecha_retiro,
+        hora_retiro: args.hora_retiro ?? null,
         detalle: args.detalle ?? "",
       }),
     });
+    cotizacionesRegistradas.push({ contraparte: args.contraparte, monto: args.monto });
     return { registrada: true };
+  }
+
+  if (name === "evaluar_negociacion") {
+    const { operacion } = await resolverOperacionActual();
+    const res = await fetch(`${BACKEND_URL}/negociacion/evaluar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operacion_id: operacion.id,
+        call_id: callId ?? "call-" + Date.now(),
+        contraparte: candidatoActual?.nombre ?? "",
+        candidato_id: candidatoActual?.id ?? null,
+        tipo_respuesta: args.tipo_respuesta,
+        monto: args.monto,
+        variable_condicion: args.variable_condicion,
+        condicion_propuesta: args.condicion_propuesta,
+        candidatos_restantes: candidatosRestantes,
+        mejor_alternativa_monto: calcularMejorAlternativaMonto(),
+      }),
+    });
+    if (!res.ok) {
+      const detalle = await res.json().catch(() => ({}));
+      // No inventamos una decisión de negociación si el motor falló —
+      // Volta se entera de que no pudo evaluar y tiene que actuar en
+      // consecuencia (pedir un momento, o escalar), nunca decidir un
+      // monto por su cuenta.
+      return { error: detalle.detail ?? "no se pudo evaluar la negociación" };
+    }
+    return await res.json();
   }
 
   if (name === "cancel_commitment") {
@@ -118,11 +182,12 @@ export async function onToolCall(name, args) {
       body: JSON.stringify({
         operacion_id: operacion.id,
         mandato_id: mandato.id,
-        call_id: "call-" + Date.now(), // reemplazar por el call_id real de la sesión cuando exista
+        call_id: callId ?? "call-" + Date.now(),
         contraparte: args.contraparte,
         tipo: args.tipo,
         monto: args.monto,
         fecha_retiro: args.fecha_retiro,
+        hora_retiro: args.hora_retiro,
         detalle: args.detalle ?? "",
       }),
     });
@@ -360,6 +425,10 @@ async function handleEvent(ev) {
 
 async function connect() {
   setStatus("atendiendo...");
+  callId = "call-" + Date.now();
+  candidatoActual = null;
+  candidatosRestantes = null;
+  cotizacionesRegistradas.length = 0;
   try {
     const key = (await (await fetch("/session", { method: "POST" })).json()).value;
 
@@ -414,6 +483,10 @@ function hangup() {
   pc = dc = analyser = null;
   escalado = false;
   esperandoFraseDeTraspaso = false;
+  callId = null;
+  candidatoActual = null;
+  candidatosRestantes = null;
+  cotizacionesRegistradas.length = 0;
   setStatus("sonando — Volta te está llamando");
   btn("escalar").disabled = true;
   btn("devolver").disabled = true;

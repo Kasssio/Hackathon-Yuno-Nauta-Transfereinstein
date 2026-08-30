@@ -22,7 +22,7 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .models import Commitment, Mandato, Operacion, CallLogEntry
+from .models import Commitment, EstadoNegociacion, Mandato, Operacion, CallLogEntry
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 STATE_FILE = DATA_DIR / "state.json"
@@ -37,6 +37,7 @@ class Store:
         self.operaciones: Dict[str, Operacion] = {}
         self.commitments: Dict[str, Commitment] = {}
         self.llamadas: Dict[str, CallLogEntry] = {}
+        self.negociaciones: Dict[str, EstadoNegociacion] = {}
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         self._load()
 
@@ -46,10 +47,28 @@ class Store:
         if not STATE_FILE.exists():
             return
         raw = json.loads(STATE_FILE.read_text())
-        self.mandatos = {k: Mandato(**v) for k, v in raw.get("mandatos", {}).items()}
-        self.operaciones = {k: Operacion(**v) for k, v in raw.get("operaciones", {}).items()}
-        self.commitments = {k: Commitment(**v) for k, v in raw.get("commitments", {}).items()}
-        self.llamadas = {k: CallLogEntry(**v) for k, v in raw.get("llamadas", {}).items()}
+        self.mandatos = self._load_bucket(Mandato, raw.get("mandatos", {}), "mandatos")
+        self.operaciones = self._load_bucket(Operacion, raw.get("operaciones", {}), "operaciones")
+        self.commitments = self._load_bucket(Commitment, raw.get("commitments", {}), "commitments")
+        self.llamadas = self._load_bucket(CallLogEntry, raw.get("llamadas", {}), "llamadas")
+        self.negociaciones = self._load_bucket(EstadoNegociacion, raw.get("negociaciones", {}), "negociaciones")
+
+    @staticmethod
+    def _load_bucket(modelo, items: dict, nombre: str) -> dict:
+        """Carga cada registro por separado, no todo el bucket de una — si
+        uno no encaja más con el schema actual (ej. un campo que antes no
+        existía y ahora es obligatorio, en un registro viejo de antes de
+        ese cambio), lo salta con un aviso en la consola en vez de tirar
+        abajo el arranque entero del backend por un solo registro de
+        prueba desactualizado. Nunca inventa el dato que falta — lo
+        descarta, mismo criterio que "nunca asumas un dato crítico"."""
+        resultado = {}
+        for k, v in items.items():
+            try:
+                resultado[k] = modelo(**v)
+            except Exception as e:
+                print(f"[storage] aviso: se descartó un registro de '{nombre}' (id={k}) que no encaja con el schema actual — {e}")
+        return resultado
 
     def _save(self) -> None:
         raw = {
@@ -57,6 +76,7 @@ class Store:
             "operaciones": {k: json.loads(v.model_dump_json()) for k, v in self.operaciones.items()},
             "commitments": {k: json.loads(v.model_dump_json()) for k, v in self.commitments.items()},
             "llamadas": {k: json.loads(v.model_dump_json()) for k, v in self.llamadas.items()},
+            "negociaciones": {k: json.loads(v.model_dump_json()) for k, v in self.negociaciones.items()},
         }
         STATE_FILE.write_text(json.dumps(raw, indent=2, default=str))
 
@@ -115,6 +135,7 @@ class Store:
             self.operaciones.clear()
             self.commitments.clear()
             self.llamadas.clear()
+            self.negociaciones.clear()
             self._save()
             AUDIT_LOG_FILE.unlink(missing_ok=True)
 

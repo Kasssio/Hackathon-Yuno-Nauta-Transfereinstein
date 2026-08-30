@@ -80,6 +80,18 @@ def validate_commitment(
             f"({mandato.ventana_inicio} a {mandato.ventana_fin})",
         )
 
+    # El horario es opcional a nivel mandato (algunos mandatos solo fijan
+    # fecha) — si está definido, aplica a TODOS los días de la ventana por
+    # igual. Comparación como string funciona porque "HH:MM" ya viene
+    # zero-padded y validado por el schema (ver _PATRON_HORA en models.py).
+    if mandato.horario_inicio is not None and mandato.horario_fin is not None:
+        if not (mandato.horario_inicio <= commitment.hora_retiro <= mandato.horario_fin):
+            return GuardrailResult(
+                False,
+                f"horario {commitment.hora_retiro} fuera del rango permitido "
+                f"({mandato.horario_inicio} a {mandato.horario_fin})",
+            )
+
     if commitment.tipo == TipoCommitment.reserva and _ya_hay_reserva_vigente(
         commitment.operacion_id, commitments_previos
     ):

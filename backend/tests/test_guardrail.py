@@ -37,6 +37,7 @@ def _commitment(mandato: Mandato, **overrides) -> CommitmentCreate:
         tipo=TipoCommitment.reserva,
         monto=8500.0,
         fecha_retiro=date(2026, 8, 29),
+        hora_retiro="10:00",
         detalle="camión para el jueves",
     )
     base.update(overrides)
@@ -142,3 +143,50 @@ def test_reserva_vigente_sigue_bloqueando_una_segunda():
     reserva_2 = _commitment(mandato, monto=8200.0, call_id="call2")
     resultado = validate_commitment(reserva_2, mandato, commitments_previos=[reserva_1])
     assert not resultado.aprobado
+
+
+# ---------------------------------------------------------------------------
+# Horario del retiro — variable nueva junto a la fecha: un commitment
+# agenda día Y hora, y el mandato puede (opcionalmente) fijar un rango
+# horario permitido que aplica a todos los días de la ventana.
+# ---------------------------------------------------------------------------
+
+def test_horario_dentro_del_rango_se_aprueba():
+    mandato = _mandato(horario_inicio="09:00", horario_fin="18:00")
+    commitment = _commitment(mandato, hora_retiro="10:30")
+    resultado = validate_commitment(commitment, mandato)
+    assert resultado.aprobado
+
+
+def test_horario_fuera_del_rango_se_rechaza():
+    mandato = _mandato(horario_inicio="09:00", horario_fin="18:00")
+    commitment = _commitment(mandato, hora_retiro="07:00")
+    resultado = validate_commitment(commitment, mandato)
+    assert not resultado.aprobado
+    assert "horario" in resultado.motivo
+
+
+def test_horario_en_los_bordes_del_rango_se_aprueba():
+    """Los límites del rango son inclusive, igual que la ventana de fechas."""
+    mandato = _mandato(horario_inicio="09:00", horario_fin="18:00")
+    assert validate_commitment(_commitment(mandato, hora_retiro="09:00"), mandato).aprobado
+    assert validate_commitment(_commitment(mandato, hora_retiro="18:00"), mandato).aprobado
+
+
+def test_mandato_sin_horario_definido_no_restringe_la_hora():
+    """Si el mandato no fija horario_inicio/horario_fin, cualquier hora
+    válida pasa — la restricción es opcional, no implícita."""
+    mandato = _mandato()  # sin horario_inicio/horario_fin
+    commitment = _commitment(mandato, hora_retiro="23:30")
+    resultado = validate_commitment(commitment, mandato)
+    assert resultado.aprobado
+
+
+def test_horario_inicio_sin_horario_fin_no_se_puede_crear():
+    with pytest.raises(ValueError):
+        _mandato(horario_inicio="09:00", horario_fin=None)
+
+
+def test_horario_inicio_posterior_a_horario_fin_no_se_puede_crear():
+    with pytest.raises(ValueError):
+        _mandato(horario_inicio="18:00", horario_fin="09:00")

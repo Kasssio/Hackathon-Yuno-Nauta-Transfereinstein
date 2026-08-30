@@ -43,6 +43,8 @@ def main() -> None:
         "tope_precio": 9000,
         "ventana_inicio": "2026-08-28",
         "ventana_fin": "2026-08-30",
+        "horario_inicio": "09:00",
+        "horario_fin": "18:00",
         "condiciones": [],
         "vigente_hasta": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
     }).json()

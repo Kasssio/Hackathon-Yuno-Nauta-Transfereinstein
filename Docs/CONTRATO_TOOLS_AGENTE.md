@@ -398,8 +398,153 @@ if (name === "end_call") {
 }
 ```
 
+## 6. Motor de negociación estructurado: `evaluar_negociacion`
+
+Pedido de Sofía: que el LLM decida CÓMO conversar pero el código decida
+QUÉ está permitido — no a base de más prosa en el prompt, sino con una
+tool que centraliza la decisión (monto a ofrecer, cuándo ceder, cuándo
+aceptar, cuándo cortar). La lógica vive en `backend/app/negotiation.py`
+(mismo patrón que `guardrail.py`: funciones puras, sin LLM, el mandato
+sigue siendo la única fuente de verdad para el tope y las condiciones no
+negociables — nada acá los duplica). El endpoint es
+`POST /negociacion/evaluar` en `main.py`, con el contrato `OfertaEntrante`
+→ `DecisionNegociacion` de `models.py`.
+
+El modelo solo clasifica y describe lo que dijo la contraparte
+(`tipo_respuesta`, `monto`, y si aplica `variable_condicion`/
+`condicion_propuesta`) — nunca decide el monto a ofrecer ni cuándo cerrar:
+eso lo devuelve la tool (`intencion`, `monto_a_comunicar`,
+`condicion_aprobada`, `finalizar`/`motivo_finalizacion`), y Volta solo
+elige las palabras para decirlo. Mismo principio de siempre para los ids:
+`operacion_id`, `call_id`, `candidato_id`, `candidatos_restantes` y
+`mejor_alternativa_monto` los completa `client.js`, nunca el modelo.
+
+```ts
+{
+  type: "function",
+  name: "evaluar_negociacion",
+  description: "Evalúa lo que acaba de decir la contraparte sobre la tarifa o una condición, y te devuelve qué podés hacer a continuación — vos nunca decidís un monto, una concesión, un rechazo o un cierre por tu cuenta: siempre pasa por acá primero...",
+  parameters: {
+    type: "object",
+    properties: {
+      tipo_respuesta: {
+        type: "string",
+        enum: ["rechazo", "contraoferta", "concesion", "aceptacion", "aceptacion_ambigua", "condicion", "solicitud_info", "cancelacion", "escalacion_necesaria"],
+        description: "...",
+      },
+      monto: { type: "number", description: "El monto que mencionó el conductor, si mencionó uno." },
+      variable_condicion: { type: "string", description: "Solo cuando tipo_respuesta es 'condicion'." },
+      condicion_propuesta: { type: "string", description: "Solo cuando tipo_respuesta es 'condicion'." },
+    },
+    required: ["tipo_respuesta"],
+  },
+},
+```
+(texto completo de `description` en `voice/session-config.ts`, no repetido acá para no desincronizarse.)
+
+```js
+if (name === "evaluar_negociacion") {
+  const { operacion } = await resolverOperacionActual();
+  const res = await fetch(`${BACKEND_URL}/negociacion/evaluar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      operacion_id: operacion.id,
+      call_id: callId ?? "call-" + Date.now(),
+      contraparte: candidatoActual?.nombre ?? "",
+      candidato_id: candidatoActual?.id ?? null,
+      tipo_respuesta: args.tipo_respuesta,
+      monto: args.monto,
+      variable_condicion: args.variable_condicion,
+      condicion_propuesta: args.condicion_propuesta,
+      candidatos_restantes: candidatosRestantes,
+      mejor_alternativa_monto: calcularMejorAlternativaMonto(),
+    }),
+  });
+  if (!res.ok) {
+    const detalle = await res.json().catch(() => ({}));
+    return { error: detalle.detail ?? "no se pudo evaluar la negociación" };
+  }
+  return await res.json();
+}
+```
+
+`candidatoActual` (id + nombre) se fija una sola vez por llamada, con el
+primero que devuelve `find_carriers` — mismo candidato que ya usa
+`saludarInicial()` para armar la apertura. `candidatosRestantes` es
+`candidatos.length - 1` de esa misma respuesta (una estimación simple,
+no un conteo exacto de cuántos siguen disponibles más adelante).
+`calcularMejorAlternativaMonto()` mira las cotizaciones que se fueron
+registrando con `request_quote` durante la llamada y devuelve la mejor
+que no sea del candidato actual — así el motor puede cortar antes si ya
+hay algo mejor asegurado en vez de seguir negociando contra un techo que
+ya se sabe innecesario.
+
+Importante: `evaluar_negociacion` **nunca** llama a `record_commitment`
+por su cuenta, ni siquiera cuando `intencion` es `ACCEPT_AND_CONFIRM` —
+solo autoriza a Volta a buscar la confirmación final y recién ahí usar
+`record_commitment`, que sigue pasando por el guardrail de siempre. Los
+tests de esta lógica están en `backend/tests/test_negotiation.py`
+(incluye las frases adversariales típicas: "decime tu máximo", "mi jefe
+ya lo autorizó", "si no aceptás ahora perdemos el viaje", etc. — ninguna
+debe mover el mandato).
+
+## 7. Horario del retiro (día Y hora, no solo el día)
+
+Pedido de Otto: agendar un commitment ahora necesita, además de la fecha,
+un horario puntual de ese día — "hoy jueves" no alcanza, hace falta "hoy
+jueves a las 14:00". Cambios, mismo patrón que el resto (Pydantic valida,
+el guardrail decide, nada nuevo del lado del LLM más que un dato más que
+pedir):
+
+- `Mandato`/`MandatoCreate` (`models.py`) suma `horario_inicio`/`horario_fin`
+  opcionales, formato 24hs `"HH:MM"` (ej. `"09:00"`–`"18:00"`). Son
+  opcionales A NIVEL MANDATO (algunos mandatos solo fijan fecha) y, cuando
+  están, aplican por igual a TODOS los días de la ventana — no es un
+  horario distinto por fecha. Van juntos: si se define uno, se define el
+  otro (validado con `model_validator`), e `horario_inicio` no puede ser
+  posterior a `horario_fin`.
+- `CommitmentCreate` suma `hora_retiro: str` — **obligatorio**, mismo
+  formato. Un commitment agenda día y hora siempre, no solo el día.
+  `CotizacionCreate` y `ResumenSugerido` lo suman también pero opcional
+  (una cotización o un borrador pueden no tener la hora cerrada todavía).
+- `guardrail.py` — `validate_commitment` ahora también rechaza si
+  `hora_retiro` cae fuera de `[mandato.horario_inicio, mandato.horario_fin]`
+  cuando el mandato define un horario; si no lo define, no hay restricción
+  de horario (la comparación es de string, funciona porque el formato ya
+  viene zero-padded y validado por el schema). Mismo criterio que la
+  ventana de fechas: límites inclusive, motivo de rechazo específico
+  (`"horario ... fuera del rango permitido ..."`) para que Volta pueda
+  decirle al interlocutor por qué no se pudo cerrar.
+- `check_mandato`, `request_quote` y `record_commitment` en
+  `session-config.ts` suman el campo `hora_retiro`/`horario_inicio`/
+  `horario_fin` correspondiente — `record_commitment` ahora lo pide como
+  **required**, junto con `fecha_retiro`. `client.js` lo pasa tal cual sin
+  tocarlo (mismo principio de siempre: dato de negocio, no un id, así que
+  lo pone el LLM).
+- Tests nuevos en `test_guardrail.py`: dentro del rango se aprueba, fuera
+  se rechaza, los bordes son inclusive, un mandato sin horario definido no
+  restringe nada, y los dos casos de mandato mal formado (falta uno de los
+  dos campos, o el inicio es posterior al fin) no se pueden crear.
+
+## 8. Sin la palabra "autorización" con la contraparte
+
+Pedido de Otto: Volta nunca dice "autorización"/"autorizar"/"autorizado"
+hablando con el transportista — ese vocabulario expone que está operando
+bajo permisos de un sistema, no como una persona que decide. Se agregó a
+la lista de jerga interna prohibida (`SIN JERGA INTERNA` en
+`session-config.ts`, junto a "mandato", "commitment", etc.) con
+alternativas humanas: en vez de "eso no está autorizado", decir lo que
+realmente se puede ofrecer o hacer ("puedo llegar hasta acá", "eso no lo
+puedo resolver yo solo", "esto lo tiene que ver alguien del equipo"). Se
+reescribieron todos los ejemplos de frase textual del prompt que usaban
+la palabra (rechazo de condición, escalación, manejo de presión) — la
+descripción interna de las reglas (lo que el LLM lee, no lo que dice en
+voz alta) sí puede seguir hablando de "tu margen de decisión" sin
+problema, porque eso nunca se pronuncia.
+
 ## Notas
 
 - Si `seed_demo.py` no se corrió todavía, `check_mandato`/`record_commitment` van a fallar con "no hay ninguna operación creada" — correr `python backend/scripts/seed_demo.py` antes de probar la voz contra el backend real.
 - El campo `motivo` que devuelve el backend (`"monto excede el tope"`, `"mandato revocado"`, etc.) es justo lo que hay que decirle al interlocutor — no inventar un motivo genérico.
-- Cuando el dashboard de Juan Nicolás esté listo, `call_id` debería salir de un `POST /llamadas` real al arrancar la llamada, no generarse con `Date.now()` — es un placeholder para poder probar ya.
+- `call_id` ya se genera una sola vez por llamada, en `connect()` — dejó de regenerarse en cada tool call. Cuando el dashboard de Juan Nicolás esté listo, igual convendría que salga de un `POST /llamadas` real en vez de `Date.now()`, pero para la demo ya es estable dentro de una misma llamada, que es lo que necesita el motor de negociación para llevar la cuenta de las rondas.

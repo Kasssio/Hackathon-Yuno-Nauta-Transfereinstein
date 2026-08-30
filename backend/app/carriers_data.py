@@ -493,6 +493,16 @@ def _calcular_puntajes(candidatos: list[dict]) -> None:
         c["puntaje"] = round(puntaje, 3)
 
 
+def obtener_transportista(transportista_id: str) -> Optional[Transportista]:
+    """Lookup directo por id — lo usa el motor de negociación (vía
+    main.py) para leer `disposicion_a_negociar`/tasas de aceptación de UN
+    candidato puntual, sin que el LLM tenga que repetirle esos datos al
+    backend (mismo principio que en el resto del contrato: lo que el
+    cliente ya puede resolver, no se lo pedimos al modelo)."""
+
+    return next((t for t in TRANSPORTISTAS if t["id"] == transportista_id), None)
+
+
 def buscar_candidatos(
     puerto: Optional[str] = None,
     max_distancia_km: Optional[float] = None,

@@ -29,7 +29,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .guardrail import validate_commitment
-from .carriers_data import buscar_candidatos
+from .carriers_data import buscar_candidatos, obtener_transportista
+from .negotiation import ContextoEstrategia, evaluar_oferta
 from .models import (
     CallLogEntry,
     CallLogEntryCreate,
@@ -37,10 +38,14 @@ from .models import (
     Commitment,
     CommitmentCreate,
     CotizacionCreate,
+    DecisionNegociacion,
+    EstadoNegociacion,
     Mandato,
     MandatoCreate,
+    OfertaEntrante,
     Operacion,
     OperacionCreate,
+    RondaNegociacion,
 )
 from .storage import store
 
@@ -136,6 +141,7 @@ def crear_mandato(payload: MandatoCreate) -> Mandato:
             "mandato_id": mandato.id,
             "tope_precio": mandato.tope_precio,
             "ventana": [str(mandato.ventana_inicio), str(mandato.ventana_fin)],
+            "horario": [mandato.horario_inicio, mandato.horario_fin] if mandato.horario_inicio else None,
         },
     )
     return mandato
@@ -179,6 +185,122 @@ def revocar_mandato(mandato_id: str) -> Mandato:
 def registrar_cotizacion(payload: CotizacionCreate) -> dict:
     store.append_audit("cotizacion_recibida", payload.model_dump(mode="json"))
     return {"registrada": True}
+
+
+# ---------------------------------------------------------------------------
+# Negociación — el motor estructurado (ver app/negotiation.py). Acá pega la
+# tool `evaluar_negociacion` del agente, UNA vez por cada respuesta del
+# conductor que involucre precio, condición, aceptación o rechazo. El motor
+# (código, no el LLM) decide qué monto e intención están permitidos — Volta
+# usa exactamente lo que devuelve esta respuesta, nunca un número propio.
+#
+# No duplica el guardrail: esto NO registra ningún commitment. Cuando la
+# decisión es ACCEPT_AND_CONFIRM, Volta todavía tiene que confirmar los
+# datos críticos en voz alta y llamar a `record_commitment` — ese sigue
+# siendo el único punto que efectivamente reserva algo, con el guardrail de
+# siempre. Este endpoint solo gobierna qué se puede DECIR mientras se
+# negocia, no qué queda escrito.
+# ---------------------------------------------------------------------------
+
+def _buscar_estado_negociacion(call_id: str, contraparte: str) -> Optional[EstadoNegociacion]:
+    return next(
+        (n for n in store.negociaciones.values() if n.call_id == call_id and n.contraparte == contraparte),
+        None,
+    )
+
+
+@app.post("/negociacion/evaluar", response_model=DecisionNegociacion)
+def evaluar_negociacion(payload: OfertaEntrante) -> DecisionNegociacion:
+    operacion = store.operaciones.get(payload.operacion_id)
+    if not operacion:
+        raise HTTPException(404, "la operación no existe")
+    if not operacion.mandato_id:
+        raise HTTPException(404, "esta operación todavía no tiene mandato")
+    mandato = store.mandatos.get(operacion.mandato_id)
+    if not mandato:
+        raise HTTPException(404, "mandato no encontrado")
+
+    estado = _buscar_estado_negociacion(payload.call_id, payload.contraparte)
+    if estado is None:
+        estado = EstadoNegociacion(
+            operacion_id=payload.operacion_id,
+            mandato_id=mandato.id,
+            call_id=payload.call_id,
+            contraparte=payload.contraparte,
+            candidato_id=payload.candidato_id,
+            tarifa_inicial_conductor=payload.monto,
+        )
+    elif not estado.activa:
+        raise HTTPException(400, "esta negociación con esta contraparte ya terminó")
+
+    ahora = datetime.now(timezone.utc)
+    vigente_hasta = mandato.vigente_hasta
+    if vigente_hasta.tzinfo is None:
+        vigente_hasta = vigente_hasta.replace(tzinfo=timezone.utc)
+    tiempo_restante_minutos = (vigente_hasta - ahora).total_seconds() / 60
+
+    contexto = ContextoEstrategia(
+        candidatos_restantes=payload.candidatos_restantes,
+        tiempo_restante_minutos=tiempo_restante_minutos,
+    )
+
+    try:
+        decision = evaluar_oferta(estado, mandato, payload, contexto)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    estado.rondas.append(
+        RondaNegociacion(
+            numero=decision.ronda,
+            tipo_respuesta_conductor=payload.tipo_respuesta,
+            oferta_conductor=payload.monto,
+            condicion_propuesta=payload.condicion_propuesta,
+            intencion_volta=decision.intencion,
+            oferta_volta=decision.monto_a_comunicar,
+            estrategia=decision.estrategia,
+            motivo_interno=decision.motivo_interno,
+        )
+    )
+    if payload.monto is not None:
+        estado.ultima_oferta_conductor = payload.monto
+    if decision.monto_a_comunicar is not None:
+        estado.ultima_oferta_volta = decision.monto_a_comunicar
+    estado.estrategia_actual = decision.estrategia
+    estado.actualizado_en = ahora
+    if decision.finalizar:
+        estado.activa = False
+        estado.motivo_finalizacion = decision.motivo_finalizacion
+
+    store.negociaciones[estado.id] = estado
+    store.save()
+
+    # Log estructurado — sin razonamiento interno del modelo, solo los
+    # campos que pidió Sofía para poder auditar cada ronda.
+    store.append_audit(
+        "negociacion_ronda",
+        {
+            "operacion_id": payload.operacion_id,
+            "call_id": payload.call_id,
+            "contraparte": payload.contraparte,
+            "ronda": decision.ronda,
+            "oferta_recibida": payload.monto,
+            "oferta_realizada": decision.monto_a_comunicar,
+            "objetivo": mandato.tarifa_objetivo,
+            "maximo": mandato.tope_precio,
+            "estrategia": decision.estrategia.value,
+            "tiempo_restante_minutos": round(tiempo_restante_minutos, 1),
+            "intencion": decision.intencion.value,
+            "resultado": "finalizada" if decision.finalizar else "en curso",
+            "motivo_finalizacion": decision.motivo_finalizacion.value if decision.motivo_finalizacion else None,
+        },
+    )
+
+    return decision
+
+
+@app.get("/operaciones/{operacion_id}/negociaciones", response_model=List[EstadoNegociacion])
+def listar_negociaciones(operacion_id: str) -> List[EstadoNegociacion]:
+    return [n for n in store.negociaciones.values() if n.operacion_id == operacion_id]
 
 
 # ---------------------------------------------------------------------------
